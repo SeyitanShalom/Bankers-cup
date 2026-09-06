@@ -1,36 +1,45 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Bankers Cup
 
-## Getting Started
+A Next.js competition management website for a 14-team bankers' football tournament.
 
-First, run the development server:
+## Stack
+
+- Next.js for the public site and admin dashboard.
+- Supabase Postgres for teams, players, matches, events, and stats.
+- Supabase Auth for the single admin account.
+- Supabase Storage for team logos.
+- Vercel for hosting.
+
+## Local Development
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open `http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Without Supabase environment variables, the site uses demo data and the admin dashboard stores demo edits in browser local storage.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Supabase Setup
 
-## Learn More
+1. Create a Supabase project.
+2. Open the SQL editor and run `supabase/schema.sql`.
+3. Create your admin user in Supabase Auth.
+4. Run the final `insert into public.admin_users...` statement from `supabase/schema.sql` with your real admin email.
+5. Copy `.env.example` to `.env.local` and set:
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+NEXT_PUBLIC_SUPABASE_URL=your-project-url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+6. Restart the dev server.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Tournament Rules Captured
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- 14 teams in one group.
+- Top 8 qualify for knockouts.
+- Matches are 60 minutes: 30 minutes each half.
+- Added time is supported, for example `30+1` and `60+2`.
+- Knockout draws go straight to penalties.
+- Shootout goals are separate from normal goalscorer stats.
