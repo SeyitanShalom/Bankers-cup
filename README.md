@@ -18,7 +18,11 @@ npm run dev
 
 Open `http://localhost:3000`.
 
-Without Supabase environment variables, the site uses demo data and the admin dashboard stores demo edits in browser local storage.
+Without Supabase environment variables, the site uses local JSON data instead of a remote database.
+
+If you cannot create a Supabase project, you can still run the site locally without credentials. The admin dashboard switches into local mode on `localhost` and saves edits to `data/competition.json`. Public pages read the same file through `/api/competition`, so standings, fixtures, stats, and live match screens update from that local data.
+
+Local mode is intended for development and content prep on your machine. For a hosted live tournament with shared admin access and real-time updates, use Supabase or another deployed database.
 
 ## Supabase Setup
 
@@ -43,3 +47,5 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 - Added time is supported, for example `30+1` and `60+2`.
 - Knockout draws go straight to penalties.
 - Shootout goals are separate from normal goalscorer stats.
+- The admin match timer supports first half, half-time, second half, full-time, and penalties for knockout matches.
+- Live goal events update the match score, and disallowed goals can be marked so the score and stats correct automatically.

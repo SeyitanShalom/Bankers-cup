@@ -1,5 +1,6 @@
-import { demoCompetition } from "./mock-data";
 import { createServerSupabaseClient } from "./supabase";
+import { getLocalCompetitionData } from "./local-data";
+import { calculateMatchScoreFromEvents } from "./tournament";
 import type {
   CompetitionData,
   Match,
@@ -7,6 +8,7 @@ import type {
   MatchEventType,
   MatchStage,
   MatchStatus,
+  MatchTimerPhase,
   PenaltyOutcome,
   PenaltyShootoutEvent,
   Player,
@@ -43,6 +45,9 @@ type MatchRow = {
   home_penalty_score: number | null;
   away_penalty_score: number | null;
   winner_team_id: string | null;
+  timer_phase?: MatchTimerPhase | null;
+  timer_started_at?: string | null;
+  timer_elapsed_seconds?: number | null;
   created_at: string;
 };
 
@@ -56,7 +61,9 @@ type MatchEventRow = {
   half: 1 | 2;
   minute: number;
   added_time: number;
+  is_disallowed?: boolean | null;
   notes: string | null;
+  created_at?: string;
 };
 
 type PenaltyShootoutEventRow = {
@@ -102,6 +109,9 @@ function mapMatch(row: MatchRow): Match {
     homePenaltyScore: row.home_penalty_score,
     awayPenaltyScore: row.away_penalty_score,
     winnerTeamId: row.winner_team_id,
+    timerPhase: row.timer_phase ?? undefined,
+    timerStartedAt: row.timer_started_at ?? null,
+    timerElapsedSeconds: row.timer_elapsed_seconds ?? 0,
     createdAt: row.created_at,
   };
 }
@@ -117,7 +127,9 @@ function mapEvent(row: MatchEventRow): MatchEvent {
     half: row.half,
     minute: row.minute,
     addedTime: row.added_time,
+    isDisallowed: row.is_disallowed ?? false,
     notes: row.notes,
+    createdAt: row.created_at,
   };
 }
 
@@ -132,11 +144,38 @@ function mapPenalty(row: PenaltyShootoutEventRow): PenaltyShootoutEvent {
   };
 }
 
+function applyEventScores(matches: Match[], events: MatchEvent[]) {
+  const eventsByMatchId = new Map<string, MatchEvent[]>();
+
+  events.forEach((event) => {
+    if (event.type !== "goal" && event.type !== "own_goal") {
+      return;
+    }
+
+    const matchEvents = eventsByMatchId.get(event.matchId) ?? [];
+    matchEvents.push(event);
+    eventsByMatchId.set(event.matchId, matchEvents);
+  });
+
+  return matches.map((match) => {
+    const matchEvents = eventsByMatchId.get(match.id);
+
+    if (!matchEvents) {
+      return match;
+    }
+
+    return {
+      ...match,
+      ...calculateMatchScoreFromEvents(match, matchEvents),
+    };
+  });
+}
+
 export async function getCompetitionData(): Promise<CompetitionData> {
   const supabase = createServerSupabaseClient();
 
   if (!supabase) {
-    return demoCompetition;
+    return getLocalCompetitionData();
   }
 
   const [teamsResult, playersResult, matchesResult, eventsResult, penaltiesResult] =
@@ -155,25 +194,32 @@ export async function getCompetitionData(): Promise<CompetitionData> {
     eventsResult.error ||
     penaltiesResult.error
   ) {
-    console.error("Supabase data load failed. Falling back to demo data.", {
-      teams: teamsResult.error?.message,
-      players: playersResult.error?.message,
-      matches: matchesResult.error?.message,
-      events: eventsResult.error?.message,
-      penalties: penaltiesResult.error?.message,
-    });
+    const messages = [
+      teamsResult.error?.message,
+      playersResult.error?.message,
+      matchesResult.error?.message,
+      eventsResult.error?.message,
+      penaltiesResult.error?.message,
+    ].filter(Boolean);
 
-    return demoCompetition;
+    throw new Error(`Unable to load competition data from Supabase: ${messages.join("; ")}`);
   }
 
+  const teams = (teamsResult.data ?? []).map((row) => mapTeam(row as TeamRow));
+  const players = (playersResult.data ?? []).map((row) => mapPlayer(row as PlayerRow));
+  const events = (eventsResult.data ?? []).map((row) => mapEvent(row as MatchEventRow));
+  const matches = applyEventScores(
+    (matchesResult.data ?? []).map((row) => mapMatch(row as MatchRow)),
+    events,
+  );
+
   return {
-    teams: (teamsResult.data ?? []).map((row) => mapTeam(row as TeamRow)),
-    players: (playersResult.data ?? []).map((row) => mapPlayer(row as PlayerRow)),
-    matches: (matchesResult.data ?? []).map((row) => mapMatch(row as MatchRow)),
-    events: (eventsResult.data ?? []).map((row) => mapEvent(row as MatchEventRow)),
+    teams,
+    players,
+    matches,
+    events,
     penalties: (penaltiesResult.data ?? []).map((row) =>
       mapPenalty(row as PenaltyShootoutEventRow),
     ),
-    source: "supabase",
   };
 }

@@ -2,7 +2,7 @@ import { CleanSheetLeaders, PlayerLeaderList } from "@/components/stat-leaders";
 import { getCompetitionData } from "@/lib/data";
 import { calculateCleanSheets, calculatePlayerStats } from "@/lib/tournament";
 
-export const revalidate = 30;
+export const dynamic = "force-dynamic";
 
 export default async function StatsPage() {
   const data = await getCompetitionData();

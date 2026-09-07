@@ -12,6 +12,14 @@ export type MatchStatus =
   | "postponed"
   | "cancelled";
 
+export type MatchTimerPhase =
+  | "not_started"
+  | "first_half"
+  | "half_time"
+  | "second_half"
+  | "full_time"
+  | "penalties";
+
 export type PlayerPosition =
   | "Goalkeeper"
   | "Defender"
@@ -51,6 +59,9 @@ export type Match = {
   homePenaltyScore?: number | null;
   awayPenaltyScore?: number | null;
   winnerTeamId?: string | null;
+  timerPhase?: MatchTimerPhase;
+  timerStartedAt?: string | null;
+  timerElapsedSeconds?: number;
   createdAt?: string;
 };
 
@@ -64,7 +75,9 @@ export type MatchEvent = {
   half: 1 | 2;
   minute: number;
   addedTime: number;
+  isDisallowed?: boolean;
   notes?: string | null;
+  createdAt?: string;
 };
 
 export type PenaltyShootoutEvent = {
@@ -82,7 +95,6 @@ export type CompetitionData = {
   matches: Match[];
   events: MatchEvent[];
   penalties: PenaltyShootoutEvent[];
-  source: "demo" | "supabase";
 };
 
 export type StandingRow = {

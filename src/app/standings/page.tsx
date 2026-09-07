@@ -3,7 +3,7 @@ import { StandingsTable } from "@/components/standings-table";
 import { getCompetitionData } from "@/lib/data";
 import { calculateStandings, QUALIFICATION_PLACES } from "@/lib/tournament";
 
-export const revalidate = 30;
+export const dynamic = "force-dynamic";
 
 export default async function StandingsPage() {
   const data = await getCompetitionData();

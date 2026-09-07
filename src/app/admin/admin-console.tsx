@@ -2,35 +2,58 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
+  Ban,
   CalendarPlus,
   CirclePlus,
   ClipboardList,
+  Flag,
   LogIn,
   LogOut,
+  Pause,
+  Play,
   RefreshCw,
-  Save,
+  RotateCcw,
   Shield,
   Shirt,
+  Trash2,
   Trophy,
   Upload,
 } from "lucide-react";
+import { MatchTimelineList } from "@/components/match-timeline-list";
 import { TeamCrest } from "@/components/team-crest";
 import { StatusPill } from "@/components/status-pill";
-import { createBrowserSupabaseClient, hasSupabaseConfig } from "@/lib/supabase";
+import { LiveMatchTimer } from "@/components/live-match-timer";
 import {
+  getTimerPatch,
+  getTimerPhase,
+  type TimerAction,
+  type TimerPatch,
+} from "@/lib/match-timer";
+import { createBrowserSupabaseClient, hasSupabaseConfig } from "@/lib/supabase";
+import type { Session } from "@supabase/supabase-js";
+import {
+  getMatchOutcomeFromEvents,
+  type MatchOutcome,
+  type MatchOutcomeOptions,
+} from "@/lib/match-outcome";
+import {
+  calculateMatchScoreFromEvents,
   calculatePlayerStats,
   calculateStandings,
   formatKickoff,
   formatStage,
+  getMatchEvents,
   HALF_DURATION_MINUTES,
+  isKnockoutStage,
   MATCH_DURATION_MINUTES,
 } from "@/lib/tournament";
 import type {
   CompetitionData,
   Match,
+  MatchEvent,
   MatchEventType,
   MatchStage,
-  MatchStatus,
+  Player,
   PlayerPosition,
   Team,
 } from "@/lib/types";
@@ -39,13 +62,33 @@ type AdminConsoleProps = {
   initialData: CompetitionData;
 };
 
+type AuthStatus = "checking" | "signed_out" | "authorized" | "forbidden" | "unconfigured";
+
 type Tab = "teams" | "players" | "matches" | "events";
 
-const STORAGE_KEY = "bankers-cup-demo-admin-data";
 const positions: PlayerPosition[] = ["Goalkeeper", "Defender", "Midfielder", "Forward"];
 const stages: MatchStage[] = ["group", "quarter_final", "semi_final", "final", "third_place"];
-const statuses: MatchStatus[] = ["scheduled", "live", "completed", "postponed", "cancelled"];
 const eventTypes: MatchEventType[] = ["goal", "own_goal", "yellow_card", "red_card"];
+
+type SupabaseMatchEventRow = {
+  id: string;
+  match_id: string;
+  team_id: string;
+  player_id: string;
+  assist_player_id: string | null;
+  event_type: MatchEventType;
+  half: 1 | 2;
+  minute: number;
+  added_time: number;
+  is_disallowed?: boolean | null;
+  notes?: string | null;
+  created_at?: string;
+};
+
+type LocalCompetitionMutation = {
+  action: string;
+  [key: string]: unknown;
+};
 
 function slugify(value: string) {
   return value
@@ -53,23 +96,6 @@ function slugify(value: string) {
     .trim()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
-}
-
-function createId(prefix: string) {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return `${prefix}-${crypto.randomUUID()}`;
-  }
-
-  return `${prefix}-${Date.now()}`;
-}
-
-function fileToDataUrl(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
 }
 
 async function fetchCompetitionData() {
@@ -82,6 +108,42 @@ async function fetchCompetitionData() {
   return (await response.json()) as CompetitionData;
 }
 
+async function saveLocalCompetitionMutation(mutation: LocalCompetitionMutation) {
+  const response = await fetch("/api/competition", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(mutation),
+  });
+  const body = (await response.json().catch(() => null)) as
+    | (CompetitionData & { error?: string })
+    | null;
+
+  if (!response.ok) {
+    throw new Error(body?.error ?? "Unable to update local data");
+  }
+
+  return body as CompetitionData;
+}
+
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+        return;
+      }
+
+      reject(new Error("Unable to read logo file"));
+    };
+    reader.onerror = () => reject(new Error("Unable to read logo file"));
+    reader.readAsDataURL(file);
+  });
+}
+
 function NumberInput({
   id,
   name,
@@ -89,6 +151,7 @@ function NumberInput({
   min = 0,
   max,
   required = true,
+  defaultValue,
 }: {
   id: string;
   name: string;
@@ -96,6 +159,7 @@ function NumberInput({
   min?: number;
   max?: number;
   required?: boolean;
+  defaultValue?: number | "";
 }) {
   return (
     <label className="grid gap-2 text-sm font-bold text-zinc-700" htmlFor={id}>
@@ -107,81 +171,304 @@ function NumberInput({
         min={min}
         max={max}
         required={required}
+        defaultValue={defaultValue}
         className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
       />
     </label>
   );
 }
 
+function isScoreEventType(type: MatchEventType) {
+  return type === "goal" || type === "own_goal";
+}
+
+function mapSupabaseMatchEvent(row: SupabaseMatchEventRow): MatchEvent {
+  return {
+    id: row.id,
+    matchId: row.match_id,
+    teamId: row.team_id,
+    playerId: row.player_id,
+    assistPlayerId: row.assist_player_id,
+    type: row.event_type,
+    half: row.half,
+    minute: row.minute,
+    addedTime: row.added_time,
+    isDisallowed: row.is_disallowed ?? false,
+    notes: row.notes ?? null,
+    createdAt: row.created_at,
+  };
+}
+
+function toTimerDatabasePayload(patch: TimerPatch) {
+  return {
+    status: patch.status,
+    timer_phase: patch.timerPhase,
+    timer_started_at: patch.timerStartedAt,
+    timer_elapsed_seconds: patch.timerElapsedSeconds,
+  };
+}
+
+function toOutcomeDatabasePayload(outcome: MatchOutcome) {
+  return {
+    home_score: outcome.homeScore,
+    away_score: outcome.awayScore,
+    home_penalty_score: outcome.homePenaltyScore,
+    away_penalty_score: outcome.awayPenaltyScore,
+    winner_team_id: outcome.winnerTeamId,
+  };
+}
+
+function getInitialSelectedMatchId(data: CompetitionData) {
+  return (
+    data.matches.find((match) => match.status === "live")?.id ??
+    data.matches.find((match) => match.status === "scheduled")?.id ??
+    data.matches[0]?.id ??
+    ""
+  );
+}
+
+function getInitialEventTeamId(data: CompetitionData) {
+  const match = data.matches.find((item) => item.id === getInitialSelectedMatchId(data));
+
+  return match?.homeTeamId ?? data.teams[0]?.id ?? "";
+}
+
+function getAdminScoreValue(match: Match) {
+  const showScore =
+    match.status === "live" ||
+    match.status === "completed" ||
+    match.homeScore !== null ||
+    match.awayScore !== null;
+
+  if (!showScore) {
+    return "VS";
+  }
+
+  return `${match.homeScore ?? 0} - ${match.awayScore ?? 0}`;
+}
+
+function hasPenaltyScore(match: Match) {
+  return (
+    match.homePenaltyScore !== null &&
+    match.homePenaltyScore !== undefined &&
+    match.awayPenaltyScore !== null &&
+    match.awayPenaltyScore !== undefined
+  );
+}
+
+function parseOptionalNumber(value: FormDataEntryValue | null) {
+  const normalized = String(value ?? "").trim();
+
+  if (!normalized) {
+    return null;
+  }
+
+  return Number(normalized);
+}
+
+function isValidOptionalWholeNumber(value: number | null) {
+  return value === null || (Number.isInteger(value) && value >= 0);
+}
+
+function mergeMatchEvents(events: MatchEvent[], updatedEvents: MatchEvent[]) {
+  const eventsById = new Map(events.map((event) => [event.id, event]));
+
+  updatedEvents.forEach((event) => {
+    eventsById.set(event.id, event);
+  });
+
+  return Array.from(eventsById.values());
+}
+
+function updateDataWithMatchOutcome(
+  current: CompetitionData,
+  matchId: string,
+  outcome: MatchOutcome,
+) {
+  return {
+    ...current,
+    matches: current.matches.map((match) =>
+      match.id === matchId ? { ...match, ...outcome } : match,
+    ),
+  };
+}
+
+function applyTimerPatchToMatch(match: Match, patch: TimerPatch): Match {
+  return {
+    ...match,
+    status: patch.status,
+    timerPhase: patch.timerPhase,
+    timerStartedAt: patch.timerStartedAt,
+    timerElapsedSeconds: patch.timerElapsedSeconds,
+  };
+}
+
 export function AdminConsole({ initialData }: AdminConsoleProps) {
   const configured = hasSupabaseConfig();
-  const [data, setData] = useState<CompetitionData>(() => {
-    if (typeof window === "undefined" || configured) {
-      return initialData;
-    }
-
-    const saved = window.localStorage.getItem(STORAGE_KEY);
-
-    if (!saved) {
-      return initialData;
-    }
-
-    try {
-      return JSON.parse(saved) as CompetitionData;
-    } catch {
-      return initialData;
-    }
-  });
+  const localMode = !configured;
+  const [data, setData] = useState<CompetitionData>(initialData);
+  const [authStatus, setAuthStatus] = useState<AuthStatus>(
+    configured ? "checking" : "unconfigured",
+  );
   const [activeTab, setActiveTab] = useState<Tab>("teams");
-  const [message, setMessage] = useState("Ready");
+  const [message, setMessage] = useState(() =>
+    localMode
+      ? "Local mode active. Edits save to data/competition.json on this computer."
+      : "Ready",
+  );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
-  const [selectedMatchId, setSelectedMatchId] = useState(initialData.matches[0]?.id ?? "");
-  const [selectedEventTeamId, setSelectedEventTeamId] = useState(initialData.teams[0]?.id ?? "");
+  const [selectedMatchId, setSelectedMatchId] = useState(() =>
+    getInitialSelectedMatchId(initialData),
+  );
+  const [selectedEventTeamId, setSelectedEventTeamId] = useState(() =>
+    getInitialEventTeamId(initialData),
+  );
   const supabase = useMemo(() => createBrowserSupabaseClient(), []);
   const standings = useMemo(() => calculateStandings(data.teams, data.matches), [data]);
   const playerStats = useMemo(() => calculatePlayerStats(data), [data]);
   const selectedMatch = data.matches.find((match) => match.id === selectedMatchId);
-  const eventTeamPlayers = data.players.filter((player) => player.teamId === selectedEventTeamId);
-  const canWriteLive = Boolean(configured && sessionEmail && supabase);
+  const canWriteLive =
+    localMode || Boolean(configured && authStatus === "authorized" && sessionEmail && supabase);
+  const editBlocked = !canWriteLive;
+  const editBlockedMessage =
+    localMode
+      ? "Local mode active. Edits save to data/competition.json on this computer."
+      : authStatus === "checking"
+      ? "Checking admin access..."
+      : authStatus === "forbidden"
+        ? "This account does not have admin access."
+        : configured
+          ? "Sign in with an admin account to continue."
+          : "Add Supabase credentials to load and edit database data";
+  const selectedMatchHome = selectedMatch
+    ? data.teams.find((team) => team.id === selectedMatch.homeTeamId)
+    : null;
+  const selectedMatchAway = selectedMatch
+    ? data.teams.find((team) => team.id === selectedMatch.awayTeamId)
+    : null;
+  const selectedEventTeamOptions = selectedMatch
+    ? [selectedMatch.homeTeamId, selectedMatch.awayTeamId]
+        .map((teamId) => data.teams.find((team) => team.id === teamId))
+        .filter((team): team is Team => Boolean(team))
+    : data.teams;
+  const selectedEventTeamIdIsInMatch = selectedMatch
+    ? selectedEventTeamId === selectedMatch.homeTeamId ||
+      selectedEventTeamId === selectedMatch.awayTeamId
+    : true;
+  const activeEventTeamId = selectedEventTeamIdIsInMatch
+    ? selectedEventTeamId
+    : selectedEventTeamOptions[0]?.id ?? "";
+  const eventTeamPlayers = data.players.filter((player) => player.teamId === activeEventTeamId);
+  const selectedMatchEvents = selectedMatch ? getMatchEvents(data.events, selectedMatch.id) : [];
+  const selectedTimerPhase = selectedMatch ? getTimerPhase(selectedMatch) : "not_started";
+  const selectedMatchIsKnockout = selectedMatch ? isKnockoutStage(selectedMatch.stage) : false;
+
+  function syncCompetitionData(nextData: CompetitionData) {
+    setData(nextData);
+    setSelectedMatchId((current) =>
+      nextData.matches.some((match) => match.id === current)
+        ? current
+        : getInitialSelectedMatchId(nextData),
+    );
+    setSelectedEventTeamId((current) =>
+      nextData.teams.some((team) => team.id === current)
+        ? current
+        : getInitialEventTeamId(nextData),
+    );
+  }
+
+  async function saveLocalAndSync(mutation: LocalCompetitionMutation, successMessage: string) {
+    const nextData = await saveLocalCompetitionMutation(mutation);
+    syncCompetitionData(nextData);
+    setMessage(successMessage);
+  }
 
   useEffect(() => {
-    if (configured && supabase) {
-      supabase.auth.getSession().then(({ data: sessionData }) => {
-        setSessionEmail(sessionData.session?.user.email ?? null);
-      });
-
-      const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-        setSessionEmail(session?.user.email ?? null);
-      });
-
-      return () => listener.subscription.unsubscribe();
+    if (!configured || !supabase) {
+      return undefined;
     }
 
-    return undefined;
-  }, [configured, supabase]);
+    const client = supabase;
+    let active = true;
 
-  useEffect(() => {
-    if (!configured) {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    async function loadAdminSession(session: Session | null) {
+      if (!active) return;
+
+      if (!session) {
+        setAuthStatus("signed_out");
+        setSessionEmail(null);
+        syncCompetitionData(initialData);
+        setMessage("Sign in with an admin account to continue.");
+        return;
+      }
+
+      setAuthStatus("checking");
+      setSessionEmail(session.user.email ?? null);
+      setMessage("Checking admin access...");
+
+      const { data: isAdmin, error } = await client.rpc("is_admin");
+
+      if (!active) return;
+
+      if (error || !isAdmin) {
+        setAuthStatus("forbidden");
+        syncCompetitionData(initialData);
+        setMessage(error?.message ?? "This account does not have admin access.");
+        return;
+      }
+
+      setAuthStatus("authorized");
+
+      try {
+        setMessage("Loading database data...");
+        const nextData = await fetchCompetitionData();
+
+        if (!active) return;
+
+        syncCompetitionData(nextData);
+        setMessage("Database data loaded");
+      } catch (loadError) {
+        if (!active) return;
+        setMessage(loadError instanceof Error ? loadError.message : "Unable to load competition data");
+      }
     }
-  }, [configured, data]);
+
+    client.auth.getSession().then(({ data: sessionData }) => {
+      void loadAdminSession(sessionData.session);
+    });
+
+    const { data: listener } = client.auth.onAuthStateChange((_event, session) => {
+      void loadAdminSession(session);
+    });
+
+    return () => {
+      active = false;
+      listener.subscription.unsubscribe();
+    };
+  }, [configured, initialData, supabase]);
+
+  function getWritableSupabase() {
+    if (!supabase || !configured) {
+      setMessage("Add Supabase credentials to load and edit database data");
+      return null;
+    }
+
+    if (authStatus !== "authorized" || !sessionEmail) {
+      setMessage(editBlockedMessage);
+      return null;
+    }
+
+    return supabase;
+  }
 
   async function refreshData() {
-    if (!configured) {
-      const saved = window.localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        setData(JSON.parse(saved) as CompetitionData);
-      }
-      setMessage("Demo data refreshed");
-      return;
-    }
-
     try {
-      setMessage("Loading live data...");
-      setData(await fetchCompetitionData());
-      setMessage("Live data refreshed");
+      setMessage(localMode ? "Loading local data..." : "Loading database data...");
+      const nextData = await fetchCompetitionData();
+      syncCompetitionData(nextData);
+      setMessage(localMode ? "Local data refreshed" : "Database data refreshed");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to refresh data");
     }
@@ -200,16 +487,49 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
     }
 
     setPassword("");
-    setMessage("Signed in");
-    await refreshData();
+    setMessage("Checking admin access...");
   }
 
   async function signOut() {
     if (!supabase) return;
 
     await supabase.auth.signOut();
+    setAuthStatus("signed_out");
     setSessionEmail(null);
+    syncCompetitionData(initialData);
     setMessage("Signed out");
+  }
+
+  async function fetchLiveMatchEvents(matchId: string) {
+    if (!supabase) {
+      throw new Error("Live data connection unavailable");
+    }
+
+    const { data: rows, error } = await supabase
+      .from("match_events")
+      .select("*")
+      .eq("match_id", matchId);
+
+    if (error) throw error;
+
+    return (rows ?? []).map((row) => mapSupabaseMatchEvent(row as SupabaseMatchEventRow));
+  }
+
+  async function saveLiveMatchOutcomeFromEvents(match: Match, options?: MatchOutcomeOptions) {
+    if (!supabase) {
+      throw new Error("Live data connection unavailable");
+    }
+
+    const events = await fetchLiveMatchEvents(match.id);
+    const outcome = getMatchOutcomeFromEvents(match, events, options);
+    const { error } = await supabase
+      .from("matches")
+      .update(toOutcomeDatabasePayload(outcome))
+      .eq("id", match.id);
+
+    if (error) throw error;
+
+    return outcome;
   }
 
   async function addTeam(event: FormEvent<HTMLFormElement>) {
@@ -226,40 +546,35 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
     try {
       let logoUrl: string | null = null;
 
-      if (logoFile && logoFile.size > 0) {
-        if (canWriteLive && supabase) {
-          const extension = logoFile.name.split(".").pop() ?? "png";
-          const path = `${slugify(name)}-${Date.now()}.${extension}`;
-          const upload = await supabase.storage.from("team-logos").upload(path, logoFile, {
-            upsert: true,
-          });
-
-          if (upload.error) throw upload.error;
-
-          const publicUrl = supabase.storage.from("team-logos").getPublicUrl(path);
-          logoUrl = publicUrl.data.publicUrl;
-        } else {
-          logoUrl = await fileToDataUrl(logoFile);
+      if (localMode) {
+        if (logoFile && logoFile.size > 0) {
+          logoUrl = await readFileAsDataUrl(logoFile);
         }
+
+        await saveLocalAndSync({ action: "addTeam", name, logoUrl }, `${name} added locally`);
+        event.currentTarget.reset();
+        return;
       }
 
-      if (canWriteLive && supabase) {
-        const { error } = await supabase.from("teams").insert({ name, logo_url: logoUrl });
-        if (error) throw error;
-        await refreshData();
-      } else {
-        const newTeam: Team = {
-          id: `${slugify(name)}-${Date.now()}`,
-          name,
-          logoUrl,
-        };
+      const db = getWritableSupabase();
+      if (!db) return;
 
-        setData((current) => ({
-          ...current,
-          teams: [...current.teams, newTeam].sort((a, b) => a.name.localeCompare(b.name)),
-          source: "demo",
-        }));
+      if (logoFile && logoFile.size > 0) {
+        const extension = logoFile.name.split(".").pop() ?? "png";
+        const path = `${slugify(name)}-${Date.now()}.${extension}`;
+        const upload = await db.storage.from("team-logos").upload(path, logoFile, {
+          upsert: true,
+        });
+
+        if (upload.error) throw upload.error;
+
+        const publicUrl = db.storage.from("team-logos").getPublicUrl(path);
+        logoUrl = publicUrl.data.publicUrl;
       }
+
+      const { error } = await db.from("teams").insert({ name, logo_url: logoUrl });
+      if (error) throw error;
+      await refreshData();
 
       event.currentTarget.reset();
       setMessage(`${name} added`);
@@ -291,31 +606,32 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
     }
 
     try {
-      if (canWriteLive && supabase) {
-        const { error } = await supabase.from("players").insert({
-          name,
-          team_id: teamId,
-          position,
-          jersey_number: jerseyNumber,
-        });
-        if (error) throw error;
-        await refreshData();
-      } else {
-        setData((current) => ({
-          ...current,
-          players: [
-            ...current.players,
-            {
-              id: createId("player"),
-              teamId,
-              name,
-              position,
-              jerseyNumber,
-            },
-          ],
-          source: "demo",
-        }));
+      if (localMode) {
+        await saveLocalAndSync(
+          {
+            action: "addPlayer",
+            name,
+            teamId,
+            position,
+            jerseyNumber,
+          },
+          `${name} added locally`,
+        );
+        event.currentTarget.reset();
+        return;
       }
+
+      const db = getWritableSupabase();
+      if (!db) return;
+
+      const { error } = await db.from("players").insert({
+        name,
+        team_id: teamId,
+        position,
+        jersey_number: jerseyNumber,
+      });
+      if (error) throw error;
+      await refreshData();
 
       event.currentTarget.reset();
       setMessage(`${name} added`);
@@ -338,42 +654,38 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       return;
     }
 
-    const match: Match = {
-      id: createId("match"),
-      stage,
-      homeTeamId,
-      awayTeamId,
-      kickoff: new Date(kickoff).toISOString(),
-      venue,
-      status: "scheduled",
-      homeScore: null,
-      awayScore: null,
-      homePenaltyScore: null,
-      awayPenaltyScore: null,
-      winnerTeamId: null,
-    };
+    const kickoffIso = new Date(kickoff).toISOString();
 
     try {
-      if (canWriteLive && supabase) {
-        const { error } = await supabase.from("matches").insert({
-          stage,
-          home_team_id: homeTeamId,
-          away_team_id: awayTeamId,
-          kickoff: match.kickoff,
-          venue,
-          status: "scheduled",
-        });
-        if (error) throw error;
-        await refreshData();
-      } else {
-        setData((current) => ({
-          ...current,
-          matches: [...current.matches, match].sort(
-            (a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime(),
-          ),
-          source: "demo",
-        }));
+      if (localMode) {
+        await saveLocalAndSync(
+          {
+            action: "addMatch",
+            stage,
+            homeTeamId,
+            awayTeamId,
+            kickoff: kickoffIso,
+            venue,
+          },
+          "Fixture added locally",
+        );
+        event.currentTarget.reset();
+        return;
       }
+
+      const db = getWritableSupabase();
+      if (!db) return;
+
+      const { error } = await db.from("matches").insert({
+        stage,
+        home_team_id: homeTeamId,
+        away_team_id: awayTeamId,
+        kickoff: kickoffIso,
+        venue,
+        status: "scheduled",
+      });
+      if (error) throw error;
+      await refreshData();
 
       event.currentTarget.reset();
       setMessage("Fixture added");
@@ -382,64 +694,169 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
     }
   }
 
-  async function updateResult(event: FormEvent<HTMLFormElement>) {
+  async function updateTimer(action: TimerAction) {
+    if (!selectedMatch) {
+      setMessage("Select a match first");
+      return;
+    }
+
+    const labels: Record<TimerAction, string> = {
+      start_first_half: "First half started",
+      half_time: "Half-time set",
+      start_second_half: "Second half resumed",
+      full_time: "Full-time set",
+      penalties: "Penalty shootout started",
+      reset: "Timer reset",
+    };
+
+    try {
+      if (localMode) {
+        await saveLocalAndSync(
+          {
+            action: "updateTimer",
+            matchId: selectedMatch.id,
+            timerAction: action,
+          },
+          `${labels[action]} locally`,
+        );
+        return;
+      }
+
+      const db = getWritableSupabase();
+      if (!db) return;
+
+      const patch = getTimerPatch(selectedMatch, action);
+      const matchAfterTimer = applyTimerPatchToMatch(selectedMatch, patch);
+      let outcome: MatchOutcome | null = null;
+
+      if (action === "start_first_half") {
+        outcome = {
+          homeScore: 0,
+          awayScore: 0,
+          homePenaltyScore: null,
+          awayPenaltyScore: null,
+          winnerTeamId: null,
+        };
+      }
+
+      if (action === "full_time" || action === "penalties") {
+        const matchEvents = await fetchLiveMatchEvents(selectedMatch.id);
+        outcome = getMatchOutcomeFromEvents(matchAfterTimer, matchEvents);
+      }
+
+      const { error } = await db
+        .from("matches")
+        .update({
+          ...toTimerDatabasePayload(patch),
+          ...(outcome ? toOutcomeDatabasePayload(outcome) : {}),
+        })
+        .eq("id", selectedMatch.id);
+
+      if (error) throw error;
+
+      await refreshData();
+
+      setMessage(labels[action]);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to update match timer");
+    }
+  }
+
+  async function updatePenaltyScore(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const matchId = String(form.get("matchId") ?? "");
-    const status = String(form.get("status") ?? "scheduled") as MatchStatus;
-    const homeScoreValue = String(form.get("homeScore") ?? "");
-    const awayScoreValue = String(form.get("awayScore") ?? "");
-    const homePenaltyValue = String(form.get("homePenaltyScore") ?? "");
-    const awayPenaltyValue = String(form.get("awayPenaltyScore") ?? "");
-    const winnerTeamId = String(form.get("winnerTeamId") ?? "") || null;
-    const homeScore = homeScoreValue === "" ? null : Number(homeScoreValue);
-    const awayScore = awayScoreValue === "" ? null : Number(awayScoreValue);
-    const homePenaltyScore = homePenaltyValue === "" ? null : Number(homePenaltyValue);
-    const awayPenaltyScore = awayPenaltyValue === "" ? null : Number(awayPenaltyValue);
+    const homePenaltyScore = parseOptionalNumber(form.get("homePenaltyScore"));
+    const awayPenaltyScore = parseOptionalNumber(form.get("awayPenaltyScore"));
 
     if (!matchId) {
       setMessage("Select a match");
       return;
     }
 
+    const matchForPenalty = data.matches.find((match) => match.id === matchId);
+
+    if (!matchForPenalty) {
+      setMessage("Selected match was not found");
+      return;
+    }
+
+    if (!isKnockoutStage(matchForPenalty.stage)) {
+      setMessage("Penalty scores only apply to knockout matches");
+      return;
+    }
+
+    if (
+      !isValidOptionalWholeNumber(homePenaltyScore) ||
+      !isValidOptionalWholeNumber(awayPenaltyScore)
+    ) {
+      setMessage("Penalty scores must be whole numbers");
+      return;
+    }
+
+    const hasHomePenaltyScore = homePenaltyScore !== null;
+    const hasAwayPenaltyScore = awayPenaltyScore !== null;
+    const hasPenaltyScores = hasHomePenaltyScore && hasAwayPenaltyScore;
+
+    if (hasHomePenaltyScore !== hasAwayPenaltyScore) {
+      setMessage("Enter both penalty scores or leave both blank");
+      return;
+    }
+
+    if (
+      homePenaltyScore !== null &&
+      awayPenaltyScore !== null &&
+      homePenaltyScore === awayPenaltyScore
+    ) {
+      setMessage("Penalty score needs a winner");
+      return;
+    }
+
     try {
-      if (canWriteLive && supabase) {
-        const { error } = await supabase
-          .from("matches")
-          .update({
-            status,
-            home_score: homeScore,
-            away_score: awayScore,
-            home_penalty_score: homePenaltyScore,
-            away_penalty_score: awayPenaltyScore,
-            winner_team_id: winnerTeamId,
-          })
-          .eq("id", matchId);
-        if (error) throw error;
-        await refreshData();
-      } else {
-        setData((current) => ({
-          ...current,
-          matches: current.matches.map((match) =>
-            match.id === matchId
-              ? {
-                  ...match,
-                  status,
-                  homeScore,
-                  awayScore,
-                  homePenaltyScore,
-                  awayPenaltyScore,
-                  winnerTeamId,
-                }
-              : match,
-          ),
-          source: "demo",
-        }));
+      if (localMode) {
+        await saveLocalAndSync(
+          {
+            action: "updatePenaltyScore",
+            matchId,
+            homePenaltyScore,
+            awayPenaltyScore,
+          },
+          hasPenaltyScores ? "Penalty score updated locally" : "Penalty scores cleared locally",
+        );
+        return;
       }
 
-      setMessage("Result saved");
+      const db = getWritableSupabase();
+      if (!db) return;
+
+      const matchEvents = await fetchLiveMatchEvents(matchId);
+      const score = calculateMatchScoreFromEvents(matchForPenalty, matchEvents);
+
+      if (hasPenaltyScores && score.homeScore !== score.awayScore) {
+        setMessage("Penalty scores only apply when the knockout score is tied");
+        return;
+      }
+
+      const outcome = getMatchOutcomeFromEvents(matchForPenalty, matchEvents, {
+        penaltyScore: {
+          homePenaltyScore,
+          awayPenaltyScore,
+        },
+        resolveWinner: hasPenaltyScores,
+      });
+
+      const { error } = await db
+        .from("matches")
+        .update(toOutcomeDatabasePayload(outcome))
+        .eq("id", matchId);
+
+      if (error) throw error;
+
+      await refreshData();
+
+      setMessage(hasPenaltyScores ? "Penalty score updated" : "Penalty scores cleared");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to save result");
+      setMessage(error instanceof Error ? error.message : "Unable to update penalty score");
     }
   }
 
@@ -454,9 +871,22 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
     const half = Number(form.get("half")) as 1 | 2;
     const minute = Number(form.get("minute"));
     const addedTime = Number(form.get("addedTime") ?? 0);
+    const isDisallowed = isScoreEventType(type) && form.get("isDisallowed") === "on";
 
     if (!matchId || !teamId || !playerId || !Number.isFinite(minute)) {
       setMessage("Select a match, team, player, and minute");
+      return;
+    }
+
+    const matchForEvent = data.matches.find((match) => match.id === matchId);
+
+    if (!matchForEvent) {
+      setMessage("Selected match was not found");
+      return;
+    }
+
+    if (teamId !== matchForEvent.homeTeamId && teamId !== matchForEvent.awayTeamId) {
+      setMessage("Choose one of the teams playing this match");
       return;
     }
 
@@ -466,8 +896,32 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
     }
 
     try {
-      if (canWriteLive && supabase) {
-        const { error } = await supabase.from("match_events").insert({
+      if (localMode) {
+        await saveLocalAndSync(
+          {
+            action: "addEvent",
+            matchId,
+            teamId,
+            playerId,
+            assistPlayerId,
+            type,
+            half,
+            minute,
+            addedTime,
+            isDisallowed,
+          },
+          "Match event added locally",
+        );
+        event.currentTarget.reset();
+        return;
+      }
+
+      const db = getWritableSupabase();
+      if (!db) return;
+
+      const { data: insertedRow, error } = await db
+        .from("match_events")
+        .insert({
           match_id: matchId,
           team_id: teamId,
           player_id: playerId,
@@ -476,34 +930,219 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
           half,
           minute,
           added_time: addedTime,
-        });
-        if (error) throw error;
-        await refreshData();
+          is_disallowed: isDisallowed,
+        })
+        .select("*")
+        .maybeSingle();
+      if (error) throw error;
+      if (!insertedRow) throw new Error("Match event was saved but not returned");
+
+      const insertedEvent = mapSupabaseMatchEvent(insertedRow as SupabaseMatchEventRow);
+
+      if (isScoreEventType(type)) {
+        const outcome = await saveLiveMatchOutcomeFromEvents(matchForEvent);
+
+        setData((current) => ({
+          ...updateDataWithMatchOutcome(current, matchId, outcome),
+          events: mergeMatchEvents(current.events, [insertedEvent]),
+        }));
       } else {
         setData((current) => ({
           ...current,
-          events: [
-            ...current.events,
-            {
-              id: createId("event"),
-              matchId,
-              teamId,
-              playerId,
-              assistPlayerId: type === "goal" ? assistPlayerId : null,
-              type,
-              half,
-              minute,
-              addedTime,
-            },
-          ],
-          source: "demo",
+          events: mergeMatchEvents(current.events, [insertedEvent]),
         }));
       }
+
+      await refreshData();
 
       event.currentTarget.reset();
       setMessage("Match event added");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to add match event");
+    }
+  }
+
+  async function updateEventDisallowed(matchEvent: MatchEvent, isDisallowed: boolean) {
+    if (!isScoreEventType(matchEvent.type)) {
+      return;
+    }
+
+    const matchForEvent = data.matches.find((match) => match.id === matchEvent.matchId);
+
+    if (!matchForEvent) {
+      setMessage("Selected match was not found");
+      return;
+    }
+
+    try {
+      if (localMode) {
+        await saveLocalAndSync(
+          {
+            action: "updateEventDisallowed",
+            eventId: matchEvent.id,
+            isDisallowed,
+          },
+          isDisallowed ? "Goal disallowed locally" : "Goal restored locally",
+        );
+        return;
+      }
+
+      const db = getWritableSupabase();
+      if (!db) return;
+
+      const { data: updatedRow, error } = await db
+        .from("match_events")
+        .update({ is_disallowed: isDisallowed })
+        .eq("id", matchEvent.id)
+        .select("*")
+        .maybeSingle();
+
+      if (error) throw error;
+      if (!updatedRow) throw new Error("Match event was updated but not returned");
+
+      const updatedEvent = mapSupabaseMatchEvent(updatedRow as SupabaseMatchEventRow);
+      const outcome = await saveLiveMatchOutcomeFromEvents(matchForEvent);
+
+      setData((current) => ({
+        ...updateDataWithMatchOutcome(current, matchEvent.matchId, outcome),
+        events: mergeMatchEvents(current.events, [updatedEvent]),
+      }));
+
+      await refreshData();
+
+      setMessage(isDisallowed ? "Goal disallowed" : "Goal restored");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to update match event");
+    }
+  }
+
+  async function deleteTeam(team: Team) {
+    if (!window.confirm(`Delete ${team.name}?`)) {
+      return;
+    }
+
+    try {
+      if (localMode) {
+        await saveLocalAndSync(
+          {
+            action: "deleteTeam",
+            id: team.id,
+          },
+          `${team.name} deleted locally`,
+        );
+        return;
+      }
+
+      const db = getWritableSupabase();
+      if (!db) return;
+
+      const { error } = await db.from("teams").delete().eq("id", team.id);
+      if (error) throw error;
+
+      await refreshData();
+      setMessage(`${team.name} deleted`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to delete team");
+    }
+  }
+
+  async function deletePlayer(player: Player) {
+    if (!window.confirm(`Delete ${player.name}?`)) {
+      return;
+    }
+
+    try {
+      if (localMode) {
+        await saveLocalAndSync(
+          {
+            action: "deletePlayer",
+            id: player.id,
+          },
+          `${player.name} deleted locally`,
+        );
+        return;
+      }
+
+      const db = getWritableSupabase();
+      if (!db) return;
+
+      const { error } = await db.from("players").delete().eq("id", player.id);
+      if (error) throw error;
+
+      await refreshData();
+      setMessage(`${player.name} deleted`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to delete player");
+    }
+  }
+
+  async function deleteMatch(match: Match) {
+    const home = data.teams.find((team) => team.id === match.homeTeamId);
+    const away = data.teams.find((team) => team.id === match.awayTeamId);
+    const label = `${home?.name ?? "Home"} vs ${away?.name ?? "Away"}`;
+
+    if (!window.confirm(`Delete ${label}?`)) {
+      return;
+    }
+
+    try {
+      if (localMode) {
+        await saveLocalAndSync(
+          {
+            action: "deleteMatch",
+            id: match.id,
+          },
+          `${label} deleted locally`,
+        );
+        return;
+      }
+
+      const db = getWritableSupabase();
+      if (!db) return;
+
+      const { error } = await db.from("matches").delete().eq("id", match.id);
+      if (error) throw error;
+
+      await refreshData();
+      setMessage(`${label} deleted`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to delete fixture");
+    }
+  }
+
+  async function deleteMatchEvent(matchEvent: MatchEvent) {
+    if (!window.confirm("Delete this match event?")) {
+      return;
+    }
+
+    const matchForEvent = data.matches.find((match) => match.id === matchEvent.matchId);
+
+    try {
+      if (localMode) {
+        await saveLocalAndSync(
+          {
+            action: "deleteMatchEvent",
+            id: matchEvent.id,
+          },
+          "Match event deleted locally",
+        );
+        return;
+      }
+
+      const db = getWritableSupabase();
+      if (!db) return;
+
+      const { error } = await db.from("match_events").delete().eq("id", matchEvent.id);
+      if (error) throw error;
+
+      if (matchForEvent && isScoreEventType(matchEvent.type)) {
+        await saveLiveMatchOutcomeFromEvents(matchForEvent);
+      }
+
+      await refreshData();
+      setMessage("Match event deleted");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to delete match event");
     }
   }
 
@@ -517,9 +1156,11 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
             </p>
             <h1 className="text-4xl font-black text-zinc-950">Admin Dashboard</h1>
             <p className="mt-2 max-w-3xl text-sm font-semibold text-zinc-500">
-              {configured
-                ? "Connected to Supabase configuration. Sign in with your admin account to write live data."
-                : "Demo mode is active. Add Supabase credentials to switch this dashboard to live database and logo uploads."}
+              {localMode
+                ? "Local mode is active. Edits save to data/competition.json on this computer."
+                : canWriteLive
+                ? `Signed in as ${sessionEmail}. Database writes are enabled.`
+                : editBlockedMessage}
             </p>
           </div>
 
@@ -567,7 +1208,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
         </div>
       </section>
 
-      {configured && !sessionEmail ? (
+      {configured && authStatus !== "checking" && !canWriteLive ? (
         <section className="mt-6 rounded-lg border border-zinc-200 bg-white p-6 shadow-sm">
           <h2 className="text-2xl font-black text-zinc-950">Admin Sign In</h2>
           <form className="mt-5 grid gap-4 md:grid-cols-[1fr_1fr_auto]" onSubmit={signIn}>
@@ -609,7 +1250,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
           { id: "teams", label: "Teams", icon: Shield },
           { id: "players", label: "Players", icon: Shirt },
           { id: "matches", label: "Matches", icon: CalendarPlus },
-          { id: "events", label: "Results & Events", icon: ClipboardList },
+          { id: "events", label: "Match Events", icon: ClipboardList },
         ].map((tab) => {
           const Icon = tab.icon;
 
@@ -675,12 +1316,21 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
               {data.teams.map((team) => (
                 <div key={team.id} className="flex items-center gap-3 rounded-md bg-zinc-50 p-3">
                   <TeamCrest team={team} size="md" />
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <p className="truncate font-extrabold text-zinc-950">{team.name}</p>
                     <p className="text-xs font-semibold text-zinc-500">
                       {data.players.filter((player) => player.teamId === team.id).length} players
                     </p>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => deleteTeam(team)}
+                    className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-red-200 bg-white text-red-600 transition hover:bg-red-50 hover:text-red-700"
+                    title={`Delete ${team.name}`}
+                    aria-label={`Delete ${team.name}`}
+                  >
+                    <Trash2 className="h-4 w-4" aria-hidden="true" />
+                  </button>
                 </div>
               ))}
             </div>
@@ -752,7 +1402,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                 const stats = playerStats.find((item) => item.player.id === player.id);
 
                 return (
-                  <div key={player.id} className="grid grid-cols-[auto_1fr_auto] gap-3 py-3">
+                  <div key={player.id} className="grid grid-cols-[auto_1fr_auto_auto] gap-3 py-3">
                     <span className="grid h-9 w-9 place-items-center rounded-md bg-zinc-950 text-sm font-black text-white">
                       {player.jerseyNumber}
                     </span>
@@ -766,6 +1416,15 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                       <p>{stats?.goals ?? 0} G</p>
                       <p>{stats?.assists ?? 0} A</p>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => deletePlayer(player)}
+                      className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-red-200 bg-white text-red-600 transition hover:bg-red-50 hover:text-red-700"
+                      title={`Delete ${player.name}`}
+                      aria-label={`Delete ${player.name}`}
+                    >
+                      <Trash2 className="h-4 w-4" aria-hidden="true" />
+                    </button>
                   </div>
                 );
               })}
@@ -872,7 +1531,18 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                         {match.venue}
                       </p>
                     </div>
-                    <StatusPill status={match.status} />
+                    <div className="flex items-center gap-2">
+                      <StatusPill status={match.status} />
+                      <button
+                        type="button"
+                        onClick={() => deleteMatch(match)}
+                        className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-red-200 bg-white text-red-600 transition hover:bg-red-50 hover:text-red-700"
+                        title={`Delete ${home?.name ?? "Home"} vs ${away?.name ?? "Away"}`}
+                        aria-label={`Delete ${home?.name ?? "Home"} vs ${away?.name ?? "Away"}`}
+                      >
+                        <Trash2 className="h-4 w-4" aria-hidden="true" />
+                      </button>
+                    </div>
                   </div>
                 );
               })}
@@ -883,94 +1553,173 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
 
       {activeTab === "events" && (
         <section className="mt-6 grid gap-6 lg:grid-cols-2">
-          <form onSubmit={updateResult} className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
-            <h2 className="text-2xl font-black text-zinc-950">Save Result</h2>
-            <div className="mt-5 grid gap-4">
-              <label className="grid gap-2 text-sm font-bold text-zinc-700" htmlFor="result-match">
-                Match
-                <select
-                  id="result-match"
-                  name="matchId"
-                  value={selectedMatchId}
-                  onChange={(event) => setSelectedMatchId(event.target.value)}
-                  className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+          <section className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm lg:col-span-2">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-black uppercase tracking-wide text-emerald-700">
+                  Live control
+                </p>
+                <h2 className="text-2xl font-black text-zinc-950">Match Timer</h2>
+              </div>
+              {selectedMatch ? <StatusPill status={selectedMatch.status} /> : null}
+            </div>
+
+            <div className="mt-5 grid gap-5 lg:grid-cols-[0.8fr_1.2fr]">
+              <div className="space-y-4">
+                <label
+                  className="grid gap-2 text-sm font-bold text-zinc-700"
+                  htmlFor="timer-match"
                 >
-                  {data.matches.map((match) => {
-                    const home = data.teams.find((team) => team.id === match.homeTeamId);
-                    const away = data.teams.find((team) => team.id === match.awayTeamId);
+                  Controlled match
+                  <select
+                    id="timer-match"
+                    value={selectedMatchId}
+                    onChange={(event) => setSelectedMatchId(event.target.value)}
+                    className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                  >
+                    {data.matches.map((match) => {
+                      const home = data.teams.find((team) => team.id === match.homeTeamId);
+                      const away = data.teams.find((team) => team.id === match.awayTeamId);
+
+                      return (
+                        <option key={match.id} value={match.id}>
+                          {home?.name ?? "Home"} vs {away?.name ?? "Away"}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </label>
+
+                {selectedMatch && selectedMatchHome && selectedMatchAway ? (
+                  <div className="rounded-md bg-zinc-50 p-4">
+                    <p className="text-xs font-black uppercase tracking-wide text-zinc-500">
+                      {formatStage(selectedMatch.stage)}
+                    </p>
+                    <p className="mt-2 font-extrabold text-zinc-950">
+                      {selectedMatchHome.name} vs {selectedMatchAway.name}
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-zinc-500">
+                      {formatKickoff(selectedMatch.kickoff)}
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-zinc-500">
+                      {selectedMatch.venue}
+                    </p>
+                    <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-3 rounded-md border border-zinc-200 bg-white p-3">
+                      <div className="min-w-0">
+                        <p className="text-xs font-black uppercase tracking-wide text-zinc-500">
+                          Home
+                        </p>
+                        <p className="truncate text-sm font-extrabold text-zinc-950">
+                          {selectedMatchHome.name}
+                        </p>
+                      </div>
+                      <div className="grid min-w-20 place-items-center rounded-md bg-zinc-950 px-4 py-2 text-white">
+                        <p className="text-2xl font-black">{getAdminScoreValue(selectedMatch)}</p>
+                        {hasPenaltyScore(selectedMatch) ? (
+                          <p className="text-xs font-bold text-zinc-300">
+                            Pens {selectedMatch.homePenaltyScore}-{selectedMatch.awayPenaltyScore}
+                          </p>
+                        ) : null}
+                      </div>
+                      <div className="min-w-0 text-right">
+                        <p className="text-xs font-black uppercase tracking-wide text-zinc-500">
+                          Away
+                        </p>
+                        <p className="truncate text-sm font-extrabold text-zinc-950">
+                          {selectedMatchAway.name}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="rounded-md bg-zinc-50 p-4 text-sm font-semibold text-zinc-500">
+                    No match selected.
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-4">
+                {selectedMatch ? (
+                  <LiveMatchTimer
+                    key={`${selectedMatch.id}-${selectedMatch.timerPhase}-${selectedMatch.timerStartedAt}`}
+                    match={selectedMatch}
+                    variant="large"
+                  />
+                ) : null}
+                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                  {[
+                    {
+                      action: "start_first_half" as TimerAction,
+                      label: "Start 1st Half",
+                      icon: Play,
+                      disabled: selectedTimerPhase !== "not_started",
+                    },
+                    {
+                      action: "half_time" as TimerAction,
+                      label: "Half-time",
+                      icon: Pause,
+                      disabled: selectedTimerPhase !== "first_half",
+                    },
+                    {
+                      action: "start_second_half" as TimerAction,
+                      label: "Resume 2nd Half",
+                      icon: Play,
+                      disabled: selectedTimerPhase !== "half_time",
+                    },
+                    {
+                      action: "full_time" as TimerAction,
+                      label: "Full-time",
+                      icon: Flag,
+                      disabled:
+                        selectedTimerPhase === "not_started" ||
+                        selectedTimerPhase === "full_time",
+                    },
+                    {
+                      action: "penalties" as TimerAction,
+                      label: "Penalties",
+                      icon: Trophy,
+                      disabled:
+                        !selectedMatch ||
+                        !selectedMatchIsKnockout ||
+                        selectedTimerPhase === "penalties",
+                    },
+                    {
+                      action: "reset" as TimerAction,
+                      label: "Reset",
+                      icon: RotateCcw,
+                      disabled: selectedTimerPhase === "not_started",
+                    },
+                  ].map((control) => {
+                    const Icon = control.icon;
 
                     return (
-                      <option key={match.id} value={match.id}>
-                        {home?.name ?? "Home"} vs {away?.name ?? "Away"}
-                      </option>
+                      <button
+                        key={control.action}
+                        type="button"
+                        onClick={() => updateTimer(control.action)}
+                        disabled={editBlocked || control.disabled}
+                        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-sm font-black text-zinc-700 transition hover:border-emerald-300 hover:text-emerald-800 disabled:cursor-not-allowed disabled:opacity-45"
+                      >
+                        <Icon className="h-4 w-4" aria-hidden="true" />
+                        {control.label}
+                      </button>
                     );
                   })}
-                </select>
-              </label>
-              <label className="grid gap-2 text-sm font-bold text-zinc-700" htmlFor="match-status">
-                Status
-                <select
-                  id="match-status"
-                  name="status"
-                  defaultValue={selectedMatch?.status ?? "completed"}
-                  className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
-                >
-                  {statuses.map((status) => (
-                    <option key={status} value={status}>
-                      {status}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <NumberInput id="home-score" name="homeScore" label="Home score" required={false} />
-                <NumberInput id="away-score" name="awayScore" label="Away score" required={false} />
+                </div>
+                <p className="rounded-md bg-emerald-50 p-3 text-xs font-bold text-emerald-800">
+                  Start 1st Half moves the match live. Full-time completes it from the
+                  event score, and knockout ties can move into penalties.
+                </p>
               </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <NumberInput
-                  id="home-penalty-score"
-                  name="homePenaltyScore"
-                  label="Home penalties"
-                  required={false}
-                />
-                <NumberInput
-                  id="away-penalty-score"
-                  name="awayPenaltyScore"
-                  label="Away penalties"
-                  required={false}
-                />
-              </div>
-              <label className="grid gap-2 text-sm font-bold text-zinc-700" htmlFor="winner-team">
-                Winner
-                <select
-                  id="winner-team"
-                  name="winnerTeamId"
-                  className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
-                >
-                  <option value="">None</option>
-                  {selectedMatch
-                    ? [selectedMatch.homeTeamId, selectedMatch.awayTeamId].map((teamId) => {
-                        const team = data.teams.find((item) => item.id === teamId);
-                        return team ? (
-                          <option key={team.id} value={team.id}>
-                            {team.name}
-                          </option>
-                        ) : null;
-                      })
-                    : null}
-                </select>
-              </label>
-              <button
-                type="submit"
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-black text-white transition hover:bg-emerald-800"
-              >
-                <Save className="h-4 w-4" aria-hidden="true" />
-                Save result
-              </button>
             </div>
-          </form>
+          </section>
 
-          <form onSubmit={addEvent} className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
+          <form
+            onSubmit={addEvent}
+            className={`rounded-lg border border-zinc-200 bg-white p-5 shadow-sm ${
+              selectedMatchIsKnockout ? "" : "lg:col-span-2"
+            }`}
+          >
             <h2 className="text-2xl font-black text-zinc-950">Add Event</h2>
             <div className="mt-5 grid gap-4">
               <input type="hidden" name="matchId" value={selectedMatchId} />
@@ -993,11 +1742,11 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                 <select
                   id="event-team"
                   name="teamId"
-                  value={selectedEventTeamId}
+                  value={activeEventTeamId}
                   onChange={(event) => setSelectedEventTeamId(event.target.value)}
                   className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
                 >
-                  {data.teams.map((team) => (
+                  {selectedEventTeamOptions.map((team) => (
                     <option key={team.id} value={team.id}>
                       {team.name}
                     </option>
@@ -1055,6 +1804,14 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                 />
                 <NumberInput id="added-time" name="addedTime" label="Added" min={0} max={20} required={false} />
               </div>
+              <label className="flex min-h-11 items-center gap-3 rounded-md border border-zinc-300 bg-white px-3 text-sm font-bold text-zinc-700">
+                <input
+                  type="checkbox"
+                  name="isDisallowed"
+                  className="h-4 w-4 rounded border-zinc-300 text-emerald-700 focus:ring-emerald-500"
+                />
+                Disallowed
+              </label>
               <p className="rounded-md bg-zinc-50 p-3 text-xs font-bold text-zinc-500">
                 Match timing: {HALF_DURATION_MINUTES}+ added time each half, {MATCH_DURATION_MINUTES} minutes total.
               </p>
@@ -1067,6 +1824,105 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
               </button>
             </div>
           </form>
+
+          {selectedMatchIsKnockout && selectedMatch && selectedMatchHome && selectedMatchAway ? (
+            <form
+              key={`penalties-${selectedMatchId}-${selectedMatch.homePenaltyScore ?? "none"}-${selectedMatch.awayPenaltyScore ?? "none"}`}
+              onSubmit={updatePenaltyScore}
+              className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-black uppercase tracking-wide text-emerald-700">
+                    Knockout
+                  </p>
+                  <h2 className="text-2xl font-black text-zinc-950">Penalty Score</h2>
+                </div>
+                {hasPenaltyScore(selectedMatch) ? (
+                  <p className="rounded-md bg-zinc-950 px-3 py-2 text-sm font-black text-white">
+                    {selectedMatch.homePenaltyScore}-{selectedMatch.awayPenaltyScore}
+                  </p>
+                ) : null}
+              </div>
+              <div className="mt-5 grid gap-4">
+                <input type="hidden" name="matchId" value={selectedMatchId} />
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <NumberInput
+                    id="event-home-penalty-score"
+                    name="homePenaltyScore"
+                    label={`${selectedMatchHome.name} penalties`}
+                    required={false}
+                    defaultValue={selectedMatch.homePenaltyScore ?? ""}
+                  />
+                  <NumberInput
+                    id="event-away-penalty-score"
+                    name="awayPenaltyScore"
+                    label={`${selectedMatchAway.name} penalties`}
+                    required={false}
+                    defaultValue={selectedMatch.awayPenaltyScore ?? ""}
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-black text-white transition hover:bg-emerald-800"
+                >
+                  <Trophy className="h-4 w-4" aria-hidden="true" />
+                  Update penalties
+                </button>
+              </div>
+            </form>
+          ) : null}
+
+          <section className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm lg:col-span-2">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-black uppercase tracking-wide text-emerald-700">
+                  Selected fixture
+                </p>
+                <h2 className="text-2xl font-black text-zinc-950">Match Timeline</h2>
+              </div>
+              {selectedMatch ? <StatusPill status={selectedMatch.status} /> : null}
+            </div>
+            <div className="mt-5">
+              <MatchTimelineList
+                events={selectedMatchEvents}
+                teams={data.teams}
+                players={data.players}
+                renderActions={(matchEvent) =>
+                  (
+                    <div className="flex flex-wrap gap-2">
+                      {isScoreEventType(matchEvent.type) ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateEventDisallowed(matchEvent, !matchEvent.isDisallowed)
+                          }
+                          disabled={editBlocked}
+                          className="inline-flex min-h-9 items-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-xs font-black text-zinc-700 transition hover:border-emerald-300 hover:text-emerald-800 disabled:cursor-not-allowed disabled:opacity-45"
+                        >
+                          {matchEvent.isDisallowed ? (
+                            <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+                          ) : (
+                            <Ban className="h-3.5 w-3.5" aria-hidden="true" />
+                          )}
+                          {matchEvent.isDisallowed ? "Restore goal" : "Disallow goal"}
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => deleteMatchEvent(matchEvent)}
+                        disabled={editBlocked}
+                        className="inline-flex min-h-9 items-center gap-2 rounded-md border border-red-200 bg-white px-3 text-xs font-black text-red-600 transition hover:bg-red-50 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-45"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                        Delete
+                      </button>
+                    </div>
+                  )
+                }
+              />
+            </div>
+          </section>
 
           <section className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm lg:col-span-2">
             <h2 className="text-2xl font-black text-zinc-950">Qualification Snapshot</h2>

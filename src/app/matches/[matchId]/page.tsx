@@ -1,28 +1,21 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Clock, Goal, Square } from "lucide-react";
-import { StatusPill } from "@/components/status-pill";
+import { ArrowLeft, Clock } from "lucide-react";
+import { LiveMatchScore } from "@/components/live-match-score";
+import { LiveMatchStatus } from "@/components/live-match-status";
+import { LiveMatchTimeline } from "@/components/live-match-timeline";
+import { LiveMatchTimer } from "@/components/live-match-timer";
 import { TeamCrest } from "@/components/team-crest";
 import { getCompetitionData } from "@/lib/data";
 import {
-  formatEventTime,
   formatKickoff,
   formatStage,
   getMatchEvents,
-  getPlayer,
   getTeam,
+  isKnockoutStage,
 } from "@/lib/tournament";
-import type { MatchEvent } from "@/lib/types";
 
-export const revalidate = 30;
-
-function EventIcon({ event }: { event: MatchEvent }) {
-  if (event.type === "goal" || event.type === "own_goal") {
-    return <Goal className="h-4 w-4" aria-hidden="true" />;
-  }
-
-  return <Square className="h-4 w-4" aria-hidden="true" />;
-}
+export const dynamic = "force-dynamic";
 
 export default async function MatchDetailPage({
   params,
@@ -45,6 +38,7 @@ export default async function MatchDetailPage({
   }
 
   const events = getMatchEvents(data.events, match.id);
+  const knockout = isKnockoutStage(match.stage);
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
@@ -65,7 +59,7 @@ export default async function MatchDetailPage({
               </p>
               <h1 className="text-2xl font-black">{home.name} vs {away.name}</h1>
             </div>
-            <StatusPill status={match.status} />
+            <LiveMatchStatus match={match} />
           </div>
         </div>
 
@@ -78,19 +72,7 @@ export default async function MatchDetailPage({
             </div>
           </div>
 
-          <div className="grid place-items-center rounded-lg border border-zinc-200 bg-zinc-50 px-8 py-5">
-            <p className="text-5xl font-black text-zinc-950">
-              {match.homeScore ?? "-"} - {match.awayScore ?? "-"}
-            </p>
-            {match.homePenaltyScore !== null &&
-              match.homePenaltyScore !== undefined &&
-              match.awayPenaltyScore !== null &&
-              match.awayPenaltyScore !== undefined && (
-                <p className="mt-2 text-sm font-bold text-zinc-500">
-                  Penalties {match.homePenaltyScore}-{match.awayPenaltyScore}
-                </p>
-              )}
-          </div>
+          <LiveMatchScore match={match} variant="large" />
 
           <div className="flex items-center justify-start gap-4 md:justify-end md:text-right">
             <div>
@@ -108,53 +90,26 @@ export default async function MatchDetailPage({
           </p>
           <p className="text-sm font-semibold text-zinc-600 sm:text-right">{match.venue}</p>
         </div>
+        {knockout && (
+          <div className="border-t border-zinc-100 bg-emerald-50 px-5 py-3 text-sm font-bold text-emerald-800">
+            Tied after 60 minutes goes straight to penalties.
+          </div>
+        )}
       </section>
+
+      <div className="mt-6">
+        <LiveMatchTimer match={match} variant="large" />
+      </div>
 
       <section className="mt-6 rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
         <h2 className="text-2xl font-black text-zinc-950">Match Timeline</h2>
-        <div className="mt-5 space-y-3">
-          {events.length > 0 ? (
-            events.map((event) => {
-              const team = getTeam(data.teams, event.teamId);
-              const player = getPlayer(data.players, event.playerId);
-              const assist = event.assistPlayerId
-                ? getPlayer(data.players, event.assistPlayerId)
-                : null;
-
-              return (
-                <div
-                  key={event.id}
-                  className="grid grid-cols-[auto_1fr] gap-3 rounded-md border border-zinc-200 bg-zinc-50 p-3"
-                >
-                  <span
-                    className={`grid h-9 w-9 place-items-center rounded-md ${
-                      event.type === "yellow_card"
-                        ? "bg-amber-300 text-amber-950"
-                        : event.type === "red_card"
-                          ? "bg-red-600 text-white"
-                          : "bg-emerald-700 text-white"
-                    }`}
-                  >
-                    <EventIcon event={event} />
-                  </span>
-                  <div className="min-w-0">
-                    <p className="font-extrabold text-zinc-950">
-                      {formatEventTime(event)}
-                      &apos;{" "}
-                      {event.type === "own_goal" ? "Own goal" : event.type.replace("_", " ")}
-                    </p>
-                    <p className="text-sm font-semibold text-zinc-600">
-                      {player?.name ?? "Unknown player"}
-                      {assist ? `, assist by ${assist.name}` : ""} -{" "}
-                      {team?.name ?? "Unknown team"}
-                    </p>
-                  </div>
-                </div>
-              );
-            })
-          ) : (
-            <p className="text-sm text-zinc-500">No match events added yet.</p>
-          )}
+        <div className="mt-5">
+          <LiveMatchTimeline
+            match={match}
+            teams={data.teams}
+            players={data.players}
+            events={events}
+          />
         </div>
       </section>
     </main>

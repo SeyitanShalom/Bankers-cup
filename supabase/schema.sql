@@ -37,6 +37,9 @@ create table if not exists public.matches (
   home_penalty_score integer check (home_penalty_score is null or home_penalty_score >= 0),
   away_penalty_score integer check (away_penalty_score is null or away_penalty_score >= 0),
   winner_team_id uuid references public.teams(id) on delete restrict,
+  timer_phase text not null default 'not_started' check (timer_phase in ('not_started', 'first_half', 'half_time', 'second_half', 'full_time', 'penalties')),
+  timer_started_at timestamptz,
+  timer_elapsed_seconds integer not null default 0 check (timer_elapsed_seconds >= 0),
   created_at timestamptz not null default now(),
   check (home_team_id <> away_team_id)
 );
@@ -51,6 +54,7 @@ create table if not exists public.match_events (
   half integer not null check (half in (1, 2)),
   minute integer not null check (minute between 1 and 60),
   added_time integer not null default 0 check (added_time between 0 and 20),
+  is_disallowed boolean not null default false,
   notes text,
   created_at timestamptz not null default now()
 );
@@ -69,6 +73,7 @@ create table if not exists public.penalty_shootout_events (
 create index if not exists players_team_id_idx on public.players(team_id);
 create index if not exists matches_kickoff_idx on public.matches(kickoff);
 create index if not exists matches_stage_idx on public.matches(stage);
+create index if not exists matches_status_idx on public.matches(status);
 create index if not exists match_events_match_id_idx on public.match_events(match_id);
 create index if not exists match_events_player_id_idx on public.match_events(player_id);
 create index if not exists penalty_events_match_id_idx on public.penalty_shootout_events(match_id);
@@ -88,6 +93,29 @@ as $$
 $$;
 
 grant execute on function public.is_admin() to authenticated;
+
+alter table if exists public.matches
+  add column if not exists timer_phase text not null default 'not_started'
+    check (timer_phase in ('not_started', 'first_half', 'half_time', 'second_half', 'full_time', 'penalties')),
+  add column if not exists timer_started_at timestamptz,
+  add column if not exists timer_elapsed_seconds integer not null default 0
+    check (timer_elapsed_seconds >= 0);
+
+alter table if exists public.matches replica identity full;
+
+alter table if exists public.match_events
+  add column if not exists is_disallowed boolean not null default false;
+
+alter table if exists public.match_events replica identity full;
+
+do $$
+begin
+  alter publication supabase_realtime add table public.matches;
+  alter publication supabase_realtime add table public.match_events;
+exception
+  when duplicate_object then null;
+  when undefined_object then null;
+end $$;
 
 alter table public.admin_users enable row level security;
 alter table public.teams enable row level security;

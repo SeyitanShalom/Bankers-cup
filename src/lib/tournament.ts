@@ -26,8 +26,41 @@ export function formatStage(stage: MatchStage) {
   return labels[stage];
 }
 
+export function isKnockoutStage(stage: MatchStage) {
+  return stage !== "group";
+}
+
 export function formatEventTime(event: Pick<MatchEvent, "minute" | "addedTime">) {
   return event.addedTime > 0 ? `${event.minute}+${event.addedTime}` : `${event.minute}`;
+}
+
+export function isScoreEvent(event: Pick<MatchEvent, "type" | "isDisallowed">) {
+  return (event.type === "goal" || event.type === "own_goal") && !event.isDisallowed;
+}
+
+export function calculateMatchScoreFromEvents(
+  match: Pick<Match, "homeTeamId" | "awayTeamId">,
+  events: MatchEvent[],
+) {
+  return events.reduce(
+    (score, event) => {
+      if (!isScoreEvent(event)) {
+        return score;
+      }
+
+      if (event.type === "goal") {
+        if (event.teamId === match.homeTeamId) score.homeScore += 1;
+        if (event.teamId === match.awayTeamId) score.awayScore += 1;
+        return score;
+      }
+
+      if (event.teamId === match.homeTeamId) score.awayScore += 1;
+      if (event.teamId === match.awayTeamId) score.homeScore += 1;
+
+      return score;
+    },
+    { homeScore: 0, awayScore: 0 },
+  );
 }
 
 export function formatKickoff(kickoff: string) {
@@ -147,11 +180,11 @@ export function calculatePlayerStats(data: CompetitionData): PlayerStatRow[] {
   data.events.forEach((event) => {
     const playerStats = stats.get(event.playerId);
 
-    if (event.type === "goal" && playerStats) {
+    if (event.type === "goal" && !event.isDisallowed && playerStats) {
       playerStats.goals += 1;
     }
 
-    if (event.assistPlayerId) {
+    if (event.type === "goal" && !event.isDisallowed && event.assistPlayerId) {
       const assistStats = stats.get(event.assistPlayerId);
       if (assistStats) assistStats.assists += 1;
     }
@@ -217,7 +250,15 @@ export function getRecentResults(matches: Match[], limit = 5) {
 export function getMatchEvents(events: MatchEvent[], matchId: string) {
   return events
     .filter((event) => event.matchId === matchId)
-    .sort((a, b) => a.minute + a.addedTime / 100 - (b.minute + b.addedTime / 100));
+    .sort((a, b) => {
+      const timeDifference = a.minute + a.addedTime / 100 - (b.minute + b.addedTime / 100);
+
+      if (timeDifference !== 0) {
+        return timeDifference;
+      }
+
+      return (a.createdAt ?? a.id).localeCompare(b.createdAt ?? b.id);
+    });
 }
 
 export function getQualificationPairings(standings: StandingRow[]) {

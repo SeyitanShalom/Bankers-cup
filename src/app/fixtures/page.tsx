@@ -3,7 +3,7 @@ import { getCompetitionData } from "@/lib/data";
 import { formatStage } from "@/lib/tournament";
 import type { MatchStage } from "@/lib/types";
 
-export const revalidate = 30;
+export const dynamic = "force-dynamic";
 
 const stageOrder: MatchStage[] = ["group", "quarter_final", "semi_final", "final", "third_place"];
 
