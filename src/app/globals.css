@@ -48,6 +48,28 @@ button {
   cursor: pointer;
 }
 
+.overflow-x-auto {
+  scrollbar-width: thin;
+  scrollbar-color: #a1a1aa transparent;
+}
+
+.overflow-x-auto::-webkit-scrollbar {
+  height: 6px;
+}
+
+.overflow-x-auto::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.overflow-x-auto::-webkit-scrollbar-thumb {
+  background: #a1a1aa;
+  border-radius: 999px;
+}
+
+.overflow-x-auto::-webkit-scrollbar-thumb:hover {
+  background: #71717a;
+}
+
 ::selection {
   background: #f5c84c;
   color: #18181b;

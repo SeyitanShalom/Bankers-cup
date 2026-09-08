@@ -342,6 +342,15 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
         : configured
           ? "Sign in with an admin account to continue."
           : "Add Supabase credentials to load and edit database data";
+  const adminLocked = configured && !canWriteLive;
+  const loginModalTitle =
+    authStatus === "checking"
+      ? "Checking Admin Access"
+      : authStatus === "forbidden"
+        ? "Admin Access Required"
+        : "Admin Sign In";
+  const showSignInForm =
+    authStatus !== "checking" && (authStatus !== "forbidden" || !sessionEmail);
   const selectedMatchHome = selectedMatch
     ? data.teams.find((team) => team.id === selectedMatch.homeTeamId)
     : null;
@@ -534,7 +543,8 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
 
   async function addTeam(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const name = String(form.get("name") ?? "").trim();
     const logoFile = form.get("logo") instanceof File ? (form.get("logo") as File) : null;
 
@@ -552,7 +562,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
         }
 
         await saveLocalAndSync({ action: "addTeam", name, logoUrl }, `${name} added locally`);
-        event.currentTarget.reset();
+        formElement.reset();
         return;
       }
 
@@ -576,7 +586,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       if (error) throw error;
       await refreshData();
 
-      event.currentTarget.reset();
+      formElement.reset();
       setMessage(`${name} added`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to add team");
@@ -585,7 +595,8 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
 
   async function addPlayer(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const name = String(form.get("name") ?? "").trim();
     const teamId = String(form.get("teamId") ?? "");
     const position = String(form.get("position") ?? "Midfielder") as PlayerPosition;
@@ -617,7 +628,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
           },
           `${name} added locally`,
         );
-        event.currentTarget.reset();
+        formElement.reset();
         return;
       }
 
@@ -633,7 +644,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       if (error) throw error;
       await refreshData();
 
-      event.currentTarget.reset();
+      formElement.reset();
       setMessage(`${name} added`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to add player");
@@ -642,7 +653,8 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
 
   async function addMatch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const stage = String(form.get("stage") ?? "group") as MatchStage;
     const homeTeamId = String(form.get("homeTeamId") ?? "");
     const awayTeamId = String(form.get("awayTeamId") ?? "");
@@ -669,7 +681,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
           },
           "Fixture added locally",
         );
-        event.currentTarget.reset();
+        formElement.reset();
         return;
       }
 
@@ -687,7 +699,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       if (error) throw error;
       await refreshData();
 
-      event.currentTarget.reset();
+      formElement.reset();
       setMessage("Fixture added");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to add fixture");
@@ -862,7 +874,8 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
 
   async function addEvent(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const matchId = String(form.get("matchId") ?? "");
     const teamId = String(form.get("teamId") ?? "");
     const playerId = String(form.get("playerId") ?? "");
@@ -912,7 +925,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
           },
           "Match event added locally",
         );
-        event.currentTarget.reset();
+        formElement.reset();
         return;
       }
 
@@ -955,7 +968,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
 
       await refreshData();
 
-      event.currentTarget.reset();
+      formElement.reset();
       setMessage("Match event added");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to add match event");
@@ -1164,28 +1177,30 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={refreshData}
-              className="inline-flex min-h-10 items-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-sm font-bold text-zinc-700 transition hover:border-emerald-300 hover:text-emerald-800"
-              title="Refresh data"
-            >
-              <RefreshCw className="h-4 w-4" aria-hidden="true" />
-              Refresh
-            </button>
-            {sessionEmail ? (
+          {!adminLocked ? (
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                onClick={signOut}
-                className="inline-flex min-h-10 items-center gap-2 rounded-md bg-zinc-950 px-3 text-sm font-bold text-white transition hover:bg-red-700"
-                title="Sign out"
+                onClick={refreshData}
+                className="inline-flex min-h-10 items-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-sm font-bold text-zinc-700 transition hover:border-emerald-300 hover:text-emerald-800"
+                title="Refresh data"
               >
-                <LogOut className="h-4 w-4" aria-hidden="true" />
-                Sign out
+                <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                Refresh
               </button>
-            ) : null}
-          </div>
+              {sessionEmail ? (
+                <button
+                  type="button"
+                  onClick={signOut}
+                  className="inline-flex min-h-10 items-center gap-2 rounded-md bg-zinc-950 px-3 text-sm font-bold text-white transition hover:bg-red-700"
+                  title="Sign out"
+                >
+                  <LogOut className="h-4 w-4" aria-hidden="true" />
+                  Sign out
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -1208,43 +1223,102 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
         </div>
       </section>
 
-      {configured && authStatus !== "checking" && !canWriteLive ? (
-        <section className="mt-6 rounded-lg border border-zinc-200 bg-white p-6 shadow-sm">
-          <h2 className="text-2xl font-black text-zinc-950">Admin Sign In</h2>
-          <form className="mt-5 grid gap-4 md:grid-cols-[1fr_1fr_auto]" onSubmit={signIn}>
-            <label className="grid gap-2 text-sm font-bold text-zinc-700" htmlFor="admin-email">
-              Email
-              <input
-                id="admin-email"
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                required
-                className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
-              />
-            </label>
-            <label className="grid gap-2 text-sm font-bold text-zinc-700" htmlFor="admin-password">
-              Password
-              <input
-                id="admin-password"
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                required
-                className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
-              />
-            </label>
-            <button
-              type="submit"
-              className="mt-7 inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-black text-white transition hover:bg-emerald-800"
-            >
-              <LogIn className="h-4 w-4" aria-hidden="true" />
-              Sign in
-            </button>
-          </form>
-        </section>
+      {adminLocked ? (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-zinc-950/60 px-4 py-8 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="admin-login-title"
+        >
+          <section className="w-full max-w-md rounded-lg border border-zinc-200 bg-white p-6 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-md bg-emerald-700 text-white">
+                <Shield className="h-5 w-5" aria-hidden="true" />
+              </span>
+              <div>
+                <p className="text-sm font-black uppercase tracking-wide text-emerald-700">
+                  Competition control
+                </p>
+                <h2 id="admin-login-title" className="text-2xl font-black text-zinc-950">
+                  {loginModalTitle}
+                </h2>
+              </div>
+            </div>
+
+            <p className="mt-4 rounded-md bg-zinc-50 p-3 text-sm font-semibold text-zinc-600">
+              {message}
+            </p>
+
+            {authStatus === "checking" ? (
+              <div className="mt-5 flex min-h-24 items-center justify-center gap-3 rounded-md border border-zinc-200 bg-white text-sm font-bold text-zinc-600">
+                <RefreshCw className="h-4 w-4 animate-spin text-emerald-700" aria-hidden="true" />
+                Checking your session
+              </div>
+            ) : null}
+
+            {showSignInForm ? (
+              <form className="mt-5 grid gap-4" onSubmit={signIn}>
+                <label
+                  className="grid gap-2 text-sm font-bold text-zinc-700"
+                  htmlFor="admin-email"
+                >
+                  Email
+                  <input
+                    id="admin-email"
+                    type="email"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                    autoComplete="email"
+                    required
+                    className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                  />
+                </label>
+                <label
+                  className="grid gap-2 text-sm font-bold text-zinc-700"
+                  htmlFor="admin-password"
+                >
+                  Password
+                  <input
+                    id="admin-password"
+                    type="password"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    autoComplete="current-password"
+                    required
+                    className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                  />
+                </label>
+                <button
+                  type="submit"
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-black text-white transition hover:bg-emerald-800"
+                >
+                  <LogIn className="h-4 w-4" aria-hidden="true" />
+                  Sign in
+                </button>
+              </form>
+            ) : null}
+
+            {authStatus === "forbidden" && sessionEmail ? (
+              <div className="mt-5 grid gap-3">
+                <p className="text-sm font-semibold text-zinc-600">
+                  {sessionEmail} is signed in, but is not listed as an admin.
+                </p>
+                <button
+                  type="button"
+                  onClick={signOut}
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-zinc-950 px-4 text-sm font-black text-white transition hover:bg-red-700"
+                >
+                  <LogOut className="h-4 w-4" aria-hidden="true" />
+                  Sign out
+                </button>
+              </div>
+            ) : null}
+          </section>
+        </div>
       ) : null}
 
+      {!adminLocked ? (
+        <>
       <div className="mt-6 flex flex-wrap gap-2">
         {[
           { id: "teams", label: "Teams", icon: Shield },
@@ -1941,6 +2015,8 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
           </section>
         </section>
       )}
+        </>
+      ) : null}
     </main>
   );
 }
