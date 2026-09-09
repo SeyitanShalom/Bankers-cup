@@ -26,7 +26,7 @@ function getInitials(name: string) {
 export function TeamCrest({ team, size = "md" }: TeamCrestProps) {
   return (
     <div
-      className={`${sizeClasses[size]} grid shrink-0 place-items-center overflow-hidden rounded-full border border-white/70 bg-gradient-to-br from-emerald-600 via-zinc-900 to-amber-400 font-black text-white shadow-sm`}
+      className={`${sizeClasses[size]} grid shrink-0 place-items-center overflow-hidden rounded-full border border-zinc-200 bg-white font-black text-zinc-950 shadow-sm`}
       aria-label={`${team.name} logo`}
       title={team.name}
     >
