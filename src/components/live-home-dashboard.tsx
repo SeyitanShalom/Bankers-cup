@@ -194,7 +194,7 @@ export function LiveHomeDashboard({ initialData }: LiveHomeDashboardProps) {
             </Link>
           </div>
           <StandingsTable rows={standings} compact />
-          <QualificationBracket standings={standings} />
+          <QualificationBracket />
         </div>
 
         <aside className="space-y-6">
