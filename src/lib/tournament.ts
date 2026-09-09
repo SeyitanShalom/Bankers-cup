@@ -10,6 +10,8 @@ import type {
   Team,
 } from "./types";
 
+export type MatchSide = "home" | "away";
+
 export const MATCH_DURATION_MINUTES = 60;
 export const HALF_DURATION_MINUTES = 30;
 export const QUALIFICATION_PLACES = 8;
@@ -82,6 +84,30 @@ export function getTeamPlayers(players: Player[], teamId: string) {
   return players
     .filter((player) => player.teamId === teamId)
     .sort((a, b) => a.jerseyNumber - b.jerseyNumber);
+}
+
+export function getTeamGoalkeepers(players: Player[], teamId: string) {
+  return getTeamPlayers(players, teamId).filter((player) => player.position === "Goalkeeper");
+}
+
+export function isCleanSheetSide(
+  match: Pick<Match, "status" | "homeScore" | "awayScore">,
+  side: MatchSide,
+) {
+  if (match.status !== "completed" || match.homeScore === null || match.awayScore === null) {
+    return false;
+  }
+
+  return side === "home" ? match.awayScore === 0 : match.homeScore === 0;
+}
+
+export function getCleanSheetGoalkeeperId(
+  match: Pick<Match, "homeCleanSheetGoalkeeperId" | "awayCleanSheetGoalkeeperId">,
+  side: MatchSide,
+) {
+  return side === "home"
+    ? match.homeCleanSheetGoalkeeperId ?? null
+    : match.awayCleanSheetGoalkeeperId ?? null;
 }
 
 export function calculateStandings(teams: Team[], matches: Match[]): StandingRow[] {
@@ -205,10 +231,23 @@ export function calculatePlayerStats(data: CompetitionData): PlayerStatRow[] {
   });
 }
 
-export function calculateCleanSheets(teams: Team[], matches: Match[]): CleanSheetRow[] {
-  const rows = new Map(teams.map((team) => [team.id, { team, cleanSheets: 0 }]));
+export function calculateCleanSheets(data: CompetitionData): CleanSheetRow[] {
+  const teamById = new Map(data.teams.map((team) => [team.id, team]));
+  const rows = new Map<string, CleanSheetRow>();
 
-  matches
+  data.players.forEach((player) => {
+    const team = teamById.get(player.teamId);
+
+    if (!team || player.position !== "Goalkeeper") return;
+
+    rows.set(player.id, {
+      player,
+      team,
+      cleanSheets: 0,
+    });
+  });
+
+  data.matches
     .filter(
       (match) =>
         match.status === "completed" &&
@@ -216,20 +255,24 @@ export function calculateCleanSheets(teams: Team[], matches: Match[]): CleanShee
         match.awayScore !== null,
     )
     .forEach((match) => {
-      const home = rows.get(match.homeTeamId);
-      const away = rows.get(match.awayTeamId);
-
-      if (!home || !away || match.homeScore === null || match.awayScore === null) {
-        return;
+      if (isCleanSheetSide(match, "home") && match.homeCleanSheetGoalkeeperId) {
+        const homeGoalkeeper = rows.get(match.homeCleanSheetGoalkeeperId);
+        if (homeGoalkeeper?.player.teamId === match.homeTeamId) {
+          homeGoalkeeper.cleanSheets += 1;
+        }
       }
 
-      if (match.awayScore === 0) home.cleanSheets += 1;
-      if (match.homeScore === 0) away.cleanSheets += 1;
+      if (isCleanSheetSide(match, "away") && match.awayCleanSheetGoalkeeperId) {
+        const awayGoalkeeper = rows.get(match.awayCleanSheetGoalkeeperId);
+        if (awayGoalkeeper?.player.teamId === match.awayTeamId) {
+          awayGoalkeeper.cleanSheets += 1;
+        }
+      }
     });
 
   return Array.from(rows.values()).sort((a, b) => {
     if (b.cleanSheets !== a.cleanSheets) return b.cleanSheets - a.cleanSheets;
-    return a.team.name.localeCompare(b.team.name);
+    return a.player.name.localeCompare(b.player.name);
   });
 }
 

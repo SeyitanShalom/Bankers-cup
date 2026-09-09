@@ -9,6 +9,7 @@ import type {
   MatchStage,
   MatchStatus,
   MatchTimerPhase,
+  NewsPost,
   PenaltyOutcome,
   PenaltyShootoutEvent,
   Player,
@@ -45,6 +46,8 @@ type MatchRow = {
   home_penalty_score: number | null;
   away_penalty_score: number | null;
   winner_team_id: string | null;
+  home_clean_sheet_goalkeeper_id?: string | null;
+  away_clean_sheet_goalkeeper_id?: string | null;
   timer_phase?: MatchTimerPhase | null;
   timer_started_at?: string | null;
   timer_elapsed_seconds?: number | null;
@@ -73,6 +76,20 @@ type PenaltyShootoutEventRow = {
   player_id: string;
   kick_number: number;
   outcome: PenaltyOutcome;
+};
+
+type NewsPostRow = {
+  id: string;
+  title: string;
+  body: string;
+  published_at: string;
+  created_at: string;
+};
+
+type SupabaseDataError = {
+  code?: string;
+  message?: string;
+  details?: string;
 };
 
 function mapTeam(row: TeamRow): Team {
@@ -109,6 +126,8 @@ function mapMatch(row: MatchRow): Match {
     homePenaltyScore: row.home_penalty_score,
     awayPenaltyScore: row.away_penalty_score,
     winnerTeamId: row.winner_team_id,
+    homeCleanSheetGoalkeeperId: row.home_clean_sheet_goalkeeper_id ?? null,
+    awayCleanSheetGoalkeeperId: row.away_clean_sheet_goalkeeper_id ?? null,
     timerPhase: row.timer_phase ?? undefined,
     timerStartedAt: row.timer_started_at ?? null,
     timerElapsedSeconds: row.timer_elapsed_seconds ?? 0,
@@ -142,6 +161,31 @@ function mapPenalty(row: PenaltyShootoutEventRow): PenaltyShootoutEvent {
     kickNumber: row.kick_number,
     outcome: row.outcome,
   };
+}
+
+function mapNewsPost(row: NewsPostRow): NewsPost {
+  return {
+    id: row.id,
+    title: row.title,
+    body: row.body,
+    publishedAt: row.published_at,
+    createdAt: row.created_at,
+  };
+}
+
+function isMissingTableError(error: SupabaseDataError | null, tableName: string) {
+  if (!error) return false;
+
+  const text = `${error.message ?? ""} ${error.details ?? ""}`.toLowerCase();
+
+  return (
+    error.code === "42P01" ||
+    error.code === "PGRST205" ||
+    (text.includes(tableName) &&
+      (text.includes("not found") ||
+        text.includes("does not exist") ||
+        text.includes("relation")))
+  );
 }
 
 function applyEventScores(matches: Match[], events: MatchEvent[]) {
@@ -178,21 +222,25 @@ export async function getCompetitionData(): Promise<CompetitionData> {
     return getLocalCompetitionData();
   }
 
-  const [teamsResult, playersResult, matchesResult, eventsResult, penaltiesResult] =
+  const [teamsResult, playersResult, matchesResult, eventsResult, penaltiesResult, newsResult] =
     await Promise.all([
       supabase.from("teams").select("*").order("name"),
       supabase.from("players").select("*").order("jersey_number"),
       supabase.from("matches").select("*").order("kickoff"),
       supabase.from("match_events").select("*"),
       supabase.from("penalty_shootout_events").select("*").order("kick_number"),
+      supabase.from("news_posts").select("*").order("published_at", { ascending: false }),
     ]);
+
+  const newsPostsUnavailable = isMissingTableError(newsResult.error, "news_posts");
 
   if (
     teamsResult.error ||
     playersResult.error ||
     matchesResult.error ||
     eventsResult.error ||
-    penaltiesResult.error
+    penaltiesResult.error ||
+    (newsResult.error && !newsPostsUnavailable)
   ) {
     const messages = [
       teamsResult.error?.message,
@@ -200,6 +248,7 @@ export async function getCompetitionData(): Promise<CompetitionData> {
       matchesResult.error?.message,
       eventsResult.error?.message,
       penaltiesResult.error?.message,
+      newsPostsUnavailable ? null : newsResult.error?.message,
     ].filter(Boolean);
 
     throw new Error(`Unable to load competition data from Supabase: ${messages.join("; ")}`);
@@ -221,5 +270,8 @@ export async function getCompetitionData(): Promise<CompetitionData> {
     penalties: (penaltiesResult.data ?? []).map((row) =>
       mapPenalty(row as PenaltyShootoutEventRow),
     ),
+    newsPosts: newsPostsUnavailable
+      ? []
+      : (newsResult.data ?? []).map((row) => mapNewsPost(row as NewsPostRow)),
   };
 }

@@ -37,6 +37,8 @@ create table if not exists public.matches (
   home_penalty_score integer check (home_penalty_score is null or home_penalty_score >= 0),
   away_penalty_score integer check (away_penalty_score is null or away_penalty_score >= 0),
   winner_team_id uuid references public.teams(id) on delete restrict,
+  home_clean_sheet_goalkeeper_id uuid references public.players(id) on delete set null,
+  away_clean_sheet_goalkeeper_id uuid references public.players(id) on delete set null,
   timer_phase text not null default 'not_started' check (timer_phase in ('not_started', 'first_half', 'half_time', 'second_half', 'full_time', 'penalties')),
   timer_started_at timestamptz,
   timer_elapsed_seconds integer not null default 0 check (timer_elapsed_seconds >= 0),
@@ -56,7 +58,10 @@ create table if not exists public.match_events (
   added_time integer not null default 0 check (added_time between 0 and 20),
   is_disallowed boolean not null default false,
   notes text,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  constraint match_events_no_self_assist check (
+    assist_player_id is null or assist_player_id <> player_id
+  )
 );
 
 create table if not exists public.penalty_shootout_events (
@@ -70,6 +75,14 @@ create table if not exists public.penalty_shootout_events (
   unique (match_id, team_id, kick_number)
 );
 
+create table if not exists public.news_posts (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  body text not null,
+  published_at timestamptz not null default now(),
+  created_at timestamptz not null default now()
+);
+
 create index if not exists players_team_id_idx on public.players(team_id);
 create index if not exists matches_kickoff_idx on public.matches(kickoff);
 create index if not exists matches_stage_idx on public.matches(stage);
@@ -77,6 +90,7 @@ create index if not exists matches_status_idx on public.matches(status);
 create index if not exists match_events_match_id_idx on public.match_events(match_id);
 create index if not exists match_events_player_id_idx on public.match_events(player_id);
 create index if not exists penalty_events_match_id_idx on public.penalty_shootout_events(match_id);
+create index if not exists news_posts_published_at_idx on public.news_posts(published_at desc);
 
 create or replace function public.is_admin()
 returns boolean
@@ -101,10 +115,24 @@ alter table if exists public.matches
   add column if not exists timer_elapsed_seconds integer not null default 0
     check (timer_elapsed_seconds >= 0);
 
+alter table if exists public.matches
+  add column if not exists home_clean_sheet_goalkeeper_id uuid references public.players(id) on delete set null,
+  add column if not exists away_clean_sheet_goalkeeper_id uuid references public.players(id) on delete set null;
+
 alter table if exists public.matches replica identity full;
 
 alter table if exists public.match_events
   add column if not exists is_disallowed boolean not null default false;
+
+update public.match_events
+set assist_player_id = null
+where assist_player_id = player_id;
+
+alter table if exists public.match_events
+  drop constraint if exists match_events_no_self_assist,
+  add constraint match_events_no_self_assist check (
+    assist_player_id is null or assist_player_id <> player_id
+  );
 
 alter table if exists public.match_events replica identity full;
 
@@ -123,6 +151,7 @@ alter table public.players enable row level security;
 alter table public.matches enable row level security;
 alter table public.match_events enable row level security;
 alter table public.penalty_shootout_events enable row level security;
+alter table public.news_posts enable row level security;
 
 drop policy if exists "Admins read admin users" on public.admin_users;
 create policy "Admins read admin users"
@@ -186,6 +215,18 @@ using (true);
 drop policy if exists "Admins manage penalty events" on public.penalty_shootout_events;
 create policy "Admins manage penalty events"
 on public.penalty_shootout_events for all
+to authenticated
+using (public.is_admin())
+with check (public.is_admin());
+
+drop policy if exists "Public read news posts" on public.news_posts;
+create policy "Public read news posts"
+on public.news_posts for select
+using (true);
+
+drop policy if exists "Admins manage news posts" on public.news_posts;
+create policy "Admins manage news posts"
+on public.news_posts for all
 to authenticated
 using (public.is_admin())
 with check (public.is_admin());

@@ -1,5 +1,13 @@
 import Link from "next/link";
-import { BarChart3, CalendarDays, Home, Shield, Table2, Trophy } from "lucide-react";
+import {
+  BarChart3,
+  CalendarDays,
+  Home,
+  Newspaper,
+  Shield,
+  Table2,
+  Trophy,
+} from "lucide-react";
 
 const navItems = [
   { href: "/", label: "Home", icon: Home },
@@ -7,6 +15,7 @@ const navItems = [
   { href: "/fixtures", label: "Fixtures", icon: CalendarDays },
   { href: "/standings", label: "Standings", icon: Table2 },
   { href: "/stats", label: "Stats", icon: BarChart3 },
+  { href: "/news", label: "News", icon: Newspaper },
 ];
 
 export function SiteHeader() {

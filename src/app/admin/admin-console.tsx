@@ -9,6 +9,7 @@ import {
   Flag,
   LogIn,
   LogOut,
+  Newspaper,
   Pause,
   Play,
   RefreshCw,
@@ -42,10 +43,14 @@ import {
   calculateStandings,
   formatKickoff,
   formatStage,
+  getCleanSheetGoalkeeperId,
   getMatchEvents,
+  getTeamGoalkeepers,
   HALF_DURATION_MINUTES,
+  isCleanSheetSide,
   isKnockoutStage,
   MATCH_DURATION_MINUTES,
+  type MatchSide,
 } from "@/lib/tournament";
 import type {
   CompetitionData,
@@ -53,6 +58,7 @@ import type {
   MatchEvent,
   MatchEventType,
   MatchStage,
+  NewsPost,
   Player,
   PlayerPosition,
   Team,
@@ -64,7 +70,7 @@ type AdminConsoleProps = {
 
 type AuthStatus = "checking" | "signed_out" | "authorized" | "forbidden" | "unconfigured";
 
-type Tab = "teams" | "players" | "matches" | "events";
+type Tab = "teams" | "players" | "matches" | "events" | "news";
 
 const positions: PlayerPosition[] = ["Goalkeeper", "Defender", "Midfielder", "Forward"];
 const stages: MatchStage[] = ["group", "quarter_final", "semi_final", "final", "third_place"];
@@ -208,13 +214,54 @@ function toTimerDatabasePayload(patch: TimerPatch) {
   };
 }
 
-function toOutcomeDatabasePayload(outcome: MatchOutcome) {
+function getSanitizedCleanSheetMatchPatch(
+  match: Pick<
+    Match,
+    | "status"
+    | "homeScore"
+    | "awayScore"
+    | "homeCleanSheetGoalkeeperId"
+    | "awayCleanSheetGoalkeeperId"
+  >,
+): Pick<Match, "homeCleanSheetGoalkeeperId" | "awayCleanSheetGoalkeeperId"> {
+  return {
+    homeCleanSheetGoalkeeperId: isCleanSheetSide(match, "home")
+      ? match.homeCleanSheetGoalkeeperId ?? null
+      : null,
+    awayCleanSheetGoalkeeperId: isCleanSheetSide(match, "away")
+      ? match.awayCleanSheetGoalkeeperId ?? null
+      : null,
+  };
+}
+
+function getSanitizedCleanSheetDatabasePatch(
+  match: Pick<
+    Match,
+    | "status"
+    | "homeScore"
+    | "awayScore"
+    | "homeCleanSheetGoalkeeperId"
+    | "awayCleanSheetGoalkeeperId"
+  >,
+) {
+  const patch = getSanitizedCleanSheetMatchPatch(match);
+
+  return {
+    home_clean_sheet_goalkeeper_id: patch.homeCleanSheetGoalkeeperId,
+    away_clean_sheet_goalkeeper_id: patch.awayCleanSheetGoalkeeperId,
+  };
+}
+
+function toOutcomeDatabasePayload(match: Match, outcome: MatchOutcome) {
+  const nextMatch = { ...match, ...outcome };
+
   return {
     home_score: outcome.homeScore,
     away_score: outcome.awayScore,
     home_penalty_score: outcome.homePenaltyScore,
     away_penalty_score: outcome.awayPenaltyScore,
     winner_team_id: outcome.winnerTeamId,
+    ...getSanitizedCleanSheetDatabasePatch(nextMatch),
   };
 }
 
@@ -287,9 +334,18 @@ function updateDataWithMatchOutcome(
 ) {
   return {
     ...current,
-    matches: current.matches.map((match) =>
-      match.id === matchId ? { ...match, ...outcome } : match,
-    ),
+    matches: current.matches.map((match) => {
+      if (match.id !== matchId) {
+        return match;
+      }
+
+      const nextMatch = { ...match, ...outcome };
+
+      return {
+        ...nextMatch,
+        ...getSanitizedCleanSheetMatchPatch(nextMatch),
+      };
+    }),
   };
 }
 
@@ -325,6 +381,8 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
   const [selectedEventTeamId, setSelectedEventTeamId] = useState(() =>
     getInitialEventTeamId(initialData),
   );
+  const [selectedEventType, setSelectedEventType] = useState<MatchEventType>("goal");
+  const [selectedEventPlayerId, setSelectedEventPlayerId] = useState("");
   const supabase = useMemo(() => createBrowserSupabaseClient(), []);
   const standings = useMemo(() => calculateStandings(data.teams, data.matches), [data]);
   const playerStats = useMemo(() => calculatePlayerStats(data), [data]);
@@ -370,9 +428,25 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
     ? selectedEventTeamId
     : selectedEventTeamOptions[0]?.id ?? "";
   const eventTeamPlayers = data.players.filter((player) => player.teamId === activeEventTeamId);
+  const activeEventPlayerId = eventTeamPlayers.some(
+    (player) => player.id === selectedEventPlayerId,
+  )
+    ? selectedEventPlayerId
+    : eventTeamPlayers[0]?.id ?? "";
+  const assistPlayerOptions =
+    selectedEventType === "goal"
+      ? eventTeamPlayers.filter((player) => player.id !== activeEventPlayerId)
+      : [];
   const selectedMatchEvents = selectedMatch ? getMatchEvents(data.events, selectedMatch.id) : [];
   const selectedTimerPhase = selectedMatch ? getTimerPhase(selectedMatch) : "not_started";
   const selectedMatchIsKnockout = selectedMatch ? isKnockoutStage(selectedMatch.stage) : false;
+  const selectedCleanSheetSides =
+    selectedMatch && selectedMatchHome && selectedMatchAway
+      ? [
+          { side: "home" as MatchSide, team: selectedMatchHome },
+          { side: "away" as MatchSide, team: selectedMatchAway },
+        ].filter((item) => isCleanSheetSide(selectedMatch, item.side))
+      : [];
 
   function syncCompetitionData(nextData: CompetitionData) {
     setData(nextData);
@@ -533,7 +607,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
     const outcome = getMatchOutcomeFromEvents(match, events, options);
     const { error } = await supabase
       .from("matches")
-      .update(toOutcomeDatabasePayload(outcome))
+      .update(toOutcomeDatabasePayload(match, outcome))
       .eq("id", match.id);
 
     if (error) throw error;
@@ -706,6 +780,51 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
     }
   }
 
+  async function addNewsPost(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    const title = String(form.get("title") ?? "").trim();
+    const body = String(form.get("body") ?? "").trim();
+
+    if (!title || !body) {
+      setMessage("News title and body are required");
+      return;
+    }
+
+    try {
+      if (localMode) {
+        await saveLocalAndSync(
+          {
+            action: "addNewsPost",
+            title,
+            body,
+          },
+          "News post added locally",
+        );
+        formElement.reset();
+        return;
+      }
+
+      const db = getWritableSupabase();
+      if (!db) return;
+
+      const { error } = await db.from("news_posts").insert({
+        title,
+        body,
+        published_at: new Date().toISOString(),
+      });
+      if (error) throw error;
+
+      await refreshData();
+
+      formElement.reset();
+      setMessage("News post added");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to add news post");
+    }
+  }
+
   async function updateTimer(action: TimerAction) {
     if (!selectedMatch) {
       setMessage("Select a match first");
@@ -760,7 +879,9 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
         .from("matches")
         .update({
           ...toTimerDatabasePayload(patch),
-          ...(outcome ? toOutcomeDatabasePayload(outcome) : {}),
+          ...(outcome
+            ? toOutcomeDatabasePayload(matchAfterTimer, outcome)
+            : getSanitizedCleanSheetDatabasePatch(matchAfterTimer)),
         })
         .eq("id", selectedMatch.id);
 
@@ -859,7 +980,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
 
       const { error } = await db
         .from("matches")
-        .update(toOutcomeDatabasePayload(outcome))
+        .update(toOutcomeDatabasePayload(matchForPenalty, outcome))
         .eq("id", matchId);
 
       if (error) throw error;
@@ -869,6 +990,76 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       setMessage(hasPenaltyScores ? "Penalty score updated" : "Penalty scores cleared");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to update penalty score");
+    }
+  }
+
+  async function updateCleanSheetGoalkeeper(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const matchId = String(form.get("matchId") ?? "");
+    const side = String(form.get("side") ?? "") as MatchSide;
+    const goalkeeperId = String(form.get("goalkeeperId") ?? "") || null;
+
+    if (!matchId || (side !== "home" && side !== "away")) {
+      setMessage("Select a clean sheet side");
+      return;
+    }
+
+    const matchForCleanSheet = data.matches.find((match) => match.id === matchId);
+
+    if (!matchForCleanSheet) {
+      setMessage("Selected match was not found");
+      return;
+    }
+
+    if (!isCleanSheetSide(matchForCleanSheet, side)) {
+      setMessage("That team did not keep a clean sheet in this completed match");
+      return;
+    }
+
+    const teamId = side === "home" ? matchForCleanSheet.homeTeamId : matchForCleanSheet.awayTeamId;
+
+    if (
+      goalkeeperId &&
+      !getTeamGoalkeepers(data.players, teamId).some((player) => player.id === goalkeeperId)
+    ) {
+      setMessage("Choose a goalkeeper from the team that kept the clean sheet");
+      return;
+    }
+
+    try {
+      if (localMode) {
+        await saveLocalAndSync(
+          {
+            action: "updateCleanSheetGoalkeeper",
+            matchId,
+            side,
+            goalkeeperId,
+          },
+          goalkeeperId ? "Clean sheet goalkeeper saved locally" : "Clean sheet goalkeeper cleared locally",
+        );
+        return;
+      }
+
+      const db = getWritableSupabase();
+      if (!db) return;
+
+      const field =
+        side === "home"
+          ? "home_clean_sheet_goalkeeper_id"
+          : "away_clean_sheet_goalkeeper_id";
+
+      const { error } = await db
+        .from("matches")
+        .update({ [field]: goalkeeperId })
+        .eq("id", matchId);
+
+      if (error) throw error;
+
+      await refreshData();
+      setMessage(goalkeeperId ? "Clean sheet goalkeeper saved" : "Clean sheet goalkeeper cleared");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to update clean sheet goalkeeper");
     }
   }
 
@@ -908,6 +1099,11 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       return;
     }
 
+    if (type === "goal" && assistPlayerId === playerId) {
+      setMessage("A player cannot assist their own goal");
+      return;
+    }
+
     try {
       if (localMode) {
         await saveLocalAndSync(
@@ -926,6 +1122,8 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
           "Match event added locally",
         );
         formElement.reset();
+        setSelectedEventType("goal");
+        setSelectedEventPlayerId("");
         return;
       }
 
@@ -969,6 +1167,8 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       await refreshData();
 
       formElement.reset();
+      setSelectedEventType("goal");
+      setSelectedEventPlayerId("");
       setMessage("Match event added");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to add match event");
@@ -1159,6 +1359,36 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
     }
   }
 
+  async function deleteNewsPost(post: NewsPost) {
+    if (!window.confirm(`Delete ${post.title}?`)) {
+      return;
+    }
+
+    try {
+      if (localMode) {
+        await saveLocalAndSync(
+          {
+            action: "deleteNewsPost",
+            id: post.id,
+          },
+          "News post deleted locally",
+        );
+        return;
+      }
+
+      const db = getWritableSupabase();
+      if (!db) return;
+
+      const { error } = await db.from("news_posts").delete().eq("id", post.id);
+      if (error) throw error;
+
+      await refreshData();
+      setMessage("News post deleted");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to delete news post");
+    }
+  }
+
   return (
     <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
       <section className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm">
@@ -1203,7 +1433,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
           ) : null}
         </div>
 
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <div className="rounded-md bg-zinc-50 p-4">
             <p className="text-2xl font-black text-zinc-950">{data.teams.length}</p>
             <p className="text-xs font-bold uppercase text-zinc-500">Teams</p>
@@ -1219,6 +1449,10 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
           <div className="rounded-md bg-zinc-50 p-4">
             <p className="text-2xl font-black text-zinc-950">{data.events.length}</p>
             <p className="text-xs font-bold uppercase text-zinc-500">Events</p>
+          </div>
+          <div className="rounded-md bg-zinc-50 p-4">
+            <p className="text-2xl font-black text-zinc-950">{data.newsPosts.length}</p>
+            <p className="text-xs font-bold uppercase text-zinc-500">News</p>
           </div>
         </div>
       </section>
@@ -1325,6 +1559,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
           { id: "players", label: "Players", icon: Shirt },
           { id: "matches", label: "Matches", icon: CalendarPlus },
           { id: "events", label: "Match Events", icon: ClipboardList },
+          { id: "news", label: "News", icon: Newspaper },
         ].map((tab) => {
           const Icon = tab.icon;
 
@@ -1625,6 +1860,76 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
         </section>
       )}
 
+      {activeTab === "news" && (
+        <section className="mt-6 grid gap-6 lg:grid-cols-[0.75fr_1.25fr]">
+          <form onSubmit={addNewsPost} className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
+            <h2 className="text-2xl font-black text-zinc-950">Add News</h2>
+            <div className="mt-5 grid gap-4">
+              <label className="grid gap-2 text-sm font-bold text-zinc-700" htmlFor="news-title">
+                Title
+                <input
+                  id="news-title"
+                  name="title"
+                  required
+                  className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                />
+              </label>
+              <label className="grid gap-2 text-sm font-bold text-zinc-700" htmlFor="news-body">
+                Body
+                <textarea
+                  id="news-body"
+                  name="body"
+                  required
+                  rows={8}
+                  className="min-h-36 rounded-md border border-zinc-300 bg-white px-3 py-2 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                />
+              </label>
+              <button
+                type="submit"
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-black text-white transition hover:bg-emerald-800"
+              >
+                <Newspaper className="h-4 w-4" aria-hidden="true" />
+                Publish news
+              </button>
+            </div>
+          </form>
+
+          <section className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
+            <h2 className="text-2xl font-black text-zinc-950">News Posts</h2>
+            <div className="mt-5 divide-y divide-zinc-100">
+              {data.newsPosts.length > 0 ? (
+                data.newsPosts.map((post) => (
+                  <article key={post.id} className="grid gap-3 py-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate font-extrabold text-zinc-950">{post.title}</p>
+                        <p className="text-xs font-bold uppercase text-zinc-500">
+                          {formatKickoff(post.publishedAt)}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => deleteNewsPost(post)}
+                        className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-red-200 bg-white text-red-600 transition hover:bg-red-50 hover:text-red-700"
+                        title={`Delete ${post.title}`}
+                        aria-label={`Delete ${post.title}`}
+                      >
+                        <Trash2 className="h-4 w-4" aria-hidden="true" />
+                      </button>
+                    </div>
+                    <p className="whitespace-pre-line text-sm font-medium leading-6 text-zinc-600">
+                      {post.body}
+                    </p>
+                  </article>
+                ))
+              ) : (
+                <p className="py-4 text-sm font-semibold text-zinc-500">No news yet.</p>
+              )}
+            </div>
+          </section>
+        </section>
+      )}
+
       {activeTab === "events" && (
         <section className="mt-6 grid gap-6 lg:grid-cols-2">
           <section className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm lg:col-span-2">
@@ -1788,6 +2093,66 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
             </div>
           </section>
 
+          {selectedMatch && selectedCleanSheetSides.length > 0 ? (
+            <section className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm lg:col-span-2">
+              <div>
+                <p className="text-sm font-black uppercase tracking-wide text-emerald-700">
+                  Goalkeeper records
+                </p>
+                <h2 className="text-2xl font-black text-zinc-950">Clean Sheet Credits</h2>
+              </div>
+              <div className="mt-5 grid gap-4 md:grid-cols-2">
+                {selectedCleanSheetSides.map(({ side, team }) => {
+                  const goalkeepers = getTeamGoalkeepers(data.players, team.id);
+                  const currentGoalkeeperId = getCleanSheetGoalkeeperId(selectedMatch, side);
+
+                  return (
+                    <form
+                      key={`${selectedMatch.id}-${side}-${currentGoalkeeperId ?? "none"}`}
+                      onSubmit={updateCleanSheetGoalkeeper}
+                      className="rounded-md bg-zinc-50 p-4"
+                    >
+                      <input type="hidden" name="matchId" value={selectedMatch.id} />
+                      <input type="hidden" name="side" value={side} />
+                      <label
+                        className="grid gap-2 text-sm font-bold text-zinc-700"
+                        htmlFor={`clean-sheet-${side}`}
+                      >
+                        {team.name}
+                        <select
+                          id={`clean-sheet-${side}`}
+                          name="goalkeeperId"
+                          defaultValue={currentGoalkeeperId ?? ""}
+                          className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                        >
+                          <option value="">No goalkeeper selected</option>
+                          {goalkeepers.map((player) => (
+                            <option key={player.id} value={player.id}>
+                              #{player.jerseyNumber} {player.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      {goalkeepers.length === 0 ? (
+                        <p className="mt-3 text-xs font-bold text-red-600">
+                          Add a goalkeeper to this team first.
+                        </p>
+                      ) : null}
+                      <button
+                        type="submit"
+                        disabled={editBlocked || goalkeepers.length === 0}
+                        className="mt-4 inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-black text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-45"
+                      >
+                        <Shield className="h-4 w-4" aria-hidden="true" />
+                        Save credit
+                      </button>
+                    </form>
+                  );
+                })}
+              </div>
+            </section>
+          ) : null}
+
           <form
             onSubmit={addEvent}
             className={`rounded-lg border border-zinc-200 bg-white p-5 shadow-sm ${
@@ -1802,6 +2167,8 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                 <select
                   id="event-type"
                   name="type"
+                  value={selectedEventType}
+                  onChange={(event) => setSelectedEventType(event.target.value as MatchEventType)}
                   className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
                 >
                   {eventTypes.map((type) => (
@@ -1832,6 +2199,8 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                 <select
                   id="event-player"
                   name="playerId"
+                  value={activeEventPlayerId}
+                  onChange={(event) => setSelectedEventPlayerId(event.target.value)}
                   required
                   className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
                 >
@@ -1847,10 +2216,11 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                 <select
                   id="assist-player"
                   name="assistPlayerId"
-                  className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                  disabled={selectedEventType !== "goal" || assistPlayerOptions.length === 0}
+                  className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-400"
                 >
                   <option value="">No assist</option>
-                  {eventTeamPlayers.map((player) => (
+                  {assistPlayerOptions.map((player) => (
                     <option key={player.id} value={player.id}>
                       #{player.jerseyNumber} {player.name}
                     </option>

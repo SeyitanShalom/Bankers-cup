@@ -33,6 +33,8 @@ function getMatchRenderKey(match: CompetitionData["matches"][number]) {
     match.awayScore ?? "none",
     match.homePenaltyScore ?? "none",
     match.awayPenaltyScore ?? "none",
+    match.homeCleanSheetGoalkeeperId ?? "none",
+    match.awayCleanSheetGoalkeeperId ?? "none",
     match.timerPhase ?? "none",
     match.timerStartedAt ?? "none",
     match.timerElapsedSeconds ?? 0,
@@ -43,10 +45,7 @@ export function LiveHomeDashboard({ initialData }: LiveHomeDashboardProps) {
   const data = useLiveCompetitionData(initialData);
   const standings = useMemo(() => calculateStandings(data.teams, data.matches), [data]);
   const playerStats = useMemo(() => calculatePlayerStats(data), [data]);
-  const cleanSheets = useMemo(
-    () => calculateCleanSheets(data.teams, data.matches),
-    [data],
-  );
+  const cleanSheets = useMemo(() => calculateCleanSheets(data), [data]);
   const upcomingMatches = useMemo(() => getUpcomingMatches(data.matches, 4), [data]);
   const recentResults = useMemo(() => getRecentResults(data.matches, 3), [data]);
   const completedMatches = data.matches.filter((match) => match.status === "completed").length;

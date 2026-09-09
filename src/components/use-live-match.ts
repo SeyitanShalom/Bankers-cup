@@ -20,6 +20,8 @@ type SupabaseMatchPayload = {
   home_penalty_score?: number | null;
   away_penalty_score?: number | null;
   winner_team_id?: string | null;
+  home_clean_sheet_goalkeeper_id?: string | null;
+  away_clean_sheet_goalkeeper_id?: string | null;
 };
 
 type SupabaseMatchEventPayload = {
@@ -55,6 +57,14 @@ function mergePayloadMatch(match: Match, payload: SupabaseMatchPayload): Match {
         : payload.away_penalty_score,
     winnerTeamId:
       payload.winner_team_id === undefined ? match.winnerTeamId : payload.winner_team_id,
+    homeCleanSheetGoalkeeperId:
+      payload.home_clean_sheet_goalkeeper_id === undefined
+        ? match.homeCleanSheetGoalkeeperId
+        : payload.home_clean_sheet_goalkeeper_id,
+    awayCleanSheetGoalkeeperId:
+      payload.away_clean_sheet_goalkeeper_id === undefined
+        ? match.awayCleanSheetGoalkeeperId
+        : payload.away_clean_sheet_goalkeeper_id,
     timerPhase: payload.timer_phase ?? match.timerPhase,
     timerStartedAt:
       payload.timer_started_at === undefined ? match.timerStartedAt : payload.timer_started_at,

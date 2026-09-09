@@ -59,6 +59,8 @@ export type Match = {
   homePenaltyScore?: number | null;
   awayPenaltyScore?: number | null;
   winnerTeamId?: string | null;
+  homeCleanSheetGoalkeeperId?: string | null;
+  awayCleanSheetGoalkeeperId?: string | null;
   timerPhase?: MatchTimerPhase;
   timerStartedAt?: string | null;
   timerElapsedSeconds?: number;
@@ -89,12 +91,21 @@ export type PenaltyShootoutEvent = {
   outcome: PenaltyOutcome;
 };
 
+export type NewsPost = {
+  id: string;
+  title: string;
+  body: string;
+  publishedAt: string;
+  createdAt?: string;
+};
+
 export type CompetitionData = {
   teams: Team[];
   players: Player[];
   matches: Match[];
   events: MatchEvent[];
   penalties: PenaltyShootoutEvent[];
+  newsPosts: NewsPost[];
 };
 
 export type StandingRow = {
@@ -121,6 +132,7 @@ export type PlayerStatRow = {
 };
 
 export type CleanSheetRow = {
+  player: Player;
   team: Team;
   cleanSheets: number;
 };
