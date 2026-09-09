@@ -26,6 +26,13 @@ type AddTeamMutation = {
   logoUrl?: string | null;
 };
 
+type UpdateTeamMutation = {
+  action: "updateTeam";
+  teamId: string;
+  name: string;
+  logoUrl?: string | null;
+};
+
 type AddPlayerMutation = {
   action: "addPlayer";
   name: string;
@@ -34,8 +41,27 @@ type AddPlayerMutation = {
   jerseyNumber: number;
 };
 
+type UpdatePlayerMutation = {
+  action: "updatePlayer";
+  playerId: string;
+  name: string;
+  teamId: string;
+  position: PlayerPosition;
+  jerseyNumber: number;
+};
+
 type AddMatchMutation = {
   action: "addMatch";
+  stage: MatchStage;
+  homeTeamId: string;
+  awayTeamId: string;
+  kickoff: string;
+  venue: string;
+};
+
+type UpdateMatchMutation = {
+  action: "updateMatch";
+  matchId: string;
   stage: MatchStage;
   homeTeamId: string;
   awayTeamId: string;
@@ -76,10 +102,37 @@ type AddEventMutation = {
   isDisallowed: boolean;
 };
 
+type UpdateMatchEventMutation = {
+  action: "updateMatchEvent";
+  eventId: string;
+  teamId: string;
+  playerId: string;
+  assistPlayerId: string | null;
+  type: MatchEventType;
+  half: 1 | 2;
+  minute: number;
+  addedTime: number;
+  isDisallowed: boolean;
+};
+
+type UpdateEventAssistMutation = {
+  action: "updateEventAssist";
+  eventId: string;
+  assistPlayerId: string | null;
+};
+
 type AddNewsPostMutation = {
   action: "addNewsPost";
   title: string;
   body: string;
+};
+
+type UpdateNewsPostMutation = {
+  action: "updateNewsPost";
+  postId: string;
+  title: string;
+  body: string;
+  publishedAt: string;
 };
 
 type UpdateEventDisallowedMutation = {
@@ -100,13 +153,19 @@ type DeleteMutation = {
 
 export type LocalCompetitionMutation =
   | AddTeamMutation
+  | UpdateTeamMutation
   | AddPlayerMutation
+  | UpdatePlayerMutation
   | AddMatchMutation
+  | UpdateMatchMutation
   | UpdateTimerMutation
   | UpdatePenaltyScoreMutation
   | UpdateCleanSheetGoalkeeperMutation
   | AddEventMutation
+  | UpdateMatchEventMutation
+  | UpdateEventAssistMutation
   | AddNewsPostMutation
+  | UpdateNewsPostMutation
   | UpdateEventDisallowedMutation
   | DeleteMutation;
 
@@ -120,6 +179,19 @@ export const emptyCompetitionData: CompetitionData = {
   penalties: [],
   newsPosts: [],
 };
+
+const validPlayerPositions: PlayerPosition[] = [
+  "Goalkeeper",
+  "Defender",
+  "Midfielder",
+  "Forward",
+];
+const validMatchEventTypes: MatchEventType[] = [
+  "goal",
+  "own_goal",
+  "yellow_card",
+  "red_card",
+];
 
 function nowIso() {
   return new Date().toISOString();
@@ -197,6 +269,36 @@ function assertOptionalWholeNumber(value: unknown, message: string) {
   }
 
   return assertWholeNumber(value, message);
+}
+
+function assertPlayerPosition(value: unknown) {
+  if (!validPlayerPositions.includes(value as PlayerPosition)) {
+    throw new Error("Choose a valid player position");
+  }
+
+  return value as PlayerPosition;
+}
+
+function assertMatchEventType(value: unknown) {
+  if (!validMatchEventTypes.includes(value as MatchEventType)) {
+    throw new Error("Choose a valid match event type");
+  }
+
+  return value as MatchEventType;
+}
+
+function assertIsoDate(value: unknown, message: string) {
+  const date = assertString(value, message);
+
+  if (Number.isNaN(new Date(date).getTime())) {
+    throw new Error(message);
+  }
+
+  return date;
+}
+
+function isScoreEventType(type: MatchEventType) {
+  return type === "goal" || type === "own_goal";
 }
 
 function getMatchEvents(data: CompetitionData, matchId: string) {
@@ -282,9 +384,43 @@ function addTeam(data: CompetitionData, mutation: AddTeamMutation): CompetitionD
   };
 }
 
+function updateTeam(data: CompetitionData, mutation: UpdateTeamMutation): CompetitionData {
+  const teamId = assertString(mutation.teamId, "Choose a team");
+  const name = assertString(mutation.name, "Team name is required");
+  const team = data.teams.find((item) => item.id === teamId);
+
+  if (!team) {
+    throw new Error("Team was not found");
+  }
+
+  if (
+    data.teams.some(
+      (item) => item.id !== teamId && item.name.toLowerCase() === name.toLowerCase(),
+    )
+  ) {
+    throw new Error("That team already exists");
+  }
+
+  const hasLogoPatch = Object.prototype.hasOwnProperty.call(mutation, "logoUrl");
+
+  return {
+    ...data,
+    teams: data.teams.map((item) =>
+      item.id === teamId
+        ? {
+            ...item,
+            name,
+            logoUrl: hasLogoPatch ? mutation.logoUrl ?? null : item.logoUrl,
+          }
+        : item,
+    ),
+  };
+}
+
 function addPlayer(data: CompetitionData, mutation: AddPlayerMutation): CompetitionData {
   const name = assertString(mutation.name, "Player name is required");
   const teamId = assertString(mutation.teamId, "Choose a team");
+  const position = assertPlayerPosition(mutation.position);
   const jerseyNumber = assertWholeNumber(
     mutation.jerseyNumber,
     "Jersey number must be a whole number",
@@ -314,11 +450,74 @@ function addPlayer(data: CompetitionData, mutation: AddPlayerMutation): Competit
         id: randomUUID(),
         teamId,
         name,
-        position: mutation.position,
+        position,
         jerseyNumber,
         createdAt: nowIso(),
       },
     ],
+  };
+}
+
+function updatePlayer(data: CompetitionData, mutation: UpdatePlayerMutation): CompetitionData {
+  const playerId = assertString(mutation.playerId, "Choose a player");
+  const name = assertString(mutation.name, "Player name is required");
+  const teamId = assertString(mutation.teamId, "Choose a team");
+  const position = assertPlayerPosition(mutation.position);
+  const jerseyNumber = assertWholeNumber(
+    mutation.jerseyNumber,
+    "Jersey number must be a whole number",
+  );
+  const player = data.players.find((item) => item.id === playerId);
+
+  if (!player) {
+    throw new Error("Player was not found");
+  }
+
+  if (jerseyNumber < 1 || jerseyNumber > 99) {
+    throw new Error("Jersey number must be between 1 and 99");
+  }
+
+  if (!data.teams.some((team) => team.id === teamId)) {
+    throw new Error("Selected team was not found");
+  }
+
+  const hasRecordedActivity =
+    data.events.some((event) => event.playerId === playerId || event.assistPlayerId === playerId) ||
+    data.penalties.some((event) => event.playerId === playerId) ||
+    data.matches.some(
+      (match) =>
+        match.homeCleanSheetGoalkeeperId === playerId ||
+        match.awayCleanSheetGoalkeeperId === playerId,
+    );
+
+  if (hasRecordedActivity && teamId !== player.teamId) {
+    throw new Error("Only name, position, and jersey number can be edited after player activity");
+  }
+
+  if (
+    data.players.some(
+      (item) =>
+        item.id !== playerId &&
+        item.teamId === teamId &&
+        item.jerseyNumber === jerseyNumber,
+    )
+  ) {
+    throw new Error("That jersey number is already taken for this team");
+  }
+
+  return {
+    ...data,
+    players: data.players.map((item) =>
+      item.id === playerId
+        ? {
+            ...item,
+            teamId,
+            name,
+            position,
+            jerseyNumber,
+          }
+        : item,
+    ),
   };
 }
 
@@ -365,6 +564,59 @@ function addMatch(data: CompetitionData, mutation: AddMatchMutation): Competitio
       },
     ],
   };
+}
+
+function matchHasRecordedActivity(data: CompetitionData, match: Match) {
+  return (
+    match.status !== "scheduled" ||
+    match.homeScore !== null ||
+    match.awayScore !== null ||
+    match.homePenaltyScore !== null ||
+    match.awayPenaltyScore !== null ||
+    Boolean(match.winnerTeamId) ||
+    data.events.some((event) => event.matchId === match.id) ||
+    data.penalties.some((event) => event.matchId === match.id)
+  );
+}
+
+function updateMatch(data: CompetitionData, mutation: UpdateMatchMutation): CompetitionData {
+  const matchId = assertString(mutation.matchId, "Choose a fixture");
+  const stage = mutation.stage;
+  const homeTeamId = assertString(mutation.homeTeamId, "Choose a home team");
+  const awayTeamId = assertString(mutation.awayTeamId, "Choose an away team");
+  const kickoff = assertString(mutation.kickoff, "Kickoff time is required");
+  const venue = assertString(mutation.venue, "Venue is required");
+  const match = data.matches.find((item) => item.id === matchId);
+
+  if (!match) {
+    throw new Error("Selected match was not found");
+  }
+
+  if (homeTeamId === awayTeamId) {
+    throw new Error("Choose two different teams");
+  }
+
+  if (
+    !data.teams.some((team) => team.id === homeTeamId) ||
+    !data.teams.some((team) => team.id === awayTeamId)
+  ) {
+    throw new Error("One of the selected teams was not found");
+  }
+
+  if (
+    matchHasRecordedActivity(data, match) &&
+    (stage !== match.stage || homeTeamId !== match.homeTeamId || awayTeamId !== match.awayTeamId)
+  ) {
+    throw new Error("Only kickoff and venue can be edited after a fixture has match activity");
+  }
+
+  return applyMatchPatch(data, match.id, {
+    stage,
+    homeTeamId,
+    awayTeamId,
+    kickoff,
+    venue,
+  });
 }
 
 function updateTimer(data: CompetitionData, mutation: UpdateTimerMutation): CompetitionData {
@@ -501,11 +753,16 @@ function addEvent(data: CompetitionData, mutation: AddEventMutation): Competitio
   const matchId = assertString(mutation.matchId, "Select a match");
   const teamId = assertString(mutation.teamId, "Choose a team");
   const playerId = assertString(mutation.playerId, "Choose a player");
+  const type = assertMatchEventType(mutation.type);
+  const half = mutation.half;
   const minute = assertWholeNumber(mutation.minute, "Event minute must be a whole number");
   const addedTime = assertWholeNumber(mutation.addedTime, "Added time must be a whole number");
   const match = data.matches.find((item) => item.id === matchId);
   const player = data.players.find((item) => item.id === playerId);
-  const assistPlayerId = mutation.type === "goal" ? mutation.assistPlayerId : null;
+  const assistPlayerId =
+    type === "goal" && mutation.assistPlayerId
+      ? assertString(mutation.assistPlayerId, "Choose an assist")
+      : null;
   const assistPlayer = assistPlayerId
     ? data.players.find((item) => item.id === assistPlayerId)
     : null;
@@ -538,6 +795,10 @@ function addEvent(data: CompetitionData, mutation: AddEventMutation): Competitio
     throw new Error("Choose an assist from the selected team");
   }
 
+  if (half !== 1 && half !== 2) {
+    throw new Error("Choose a valid match half");
+  }
+
   if (minute < 1 || minute > MATCH_DURATION_MINUTES) {
     throw new Error("Event minute must be between 1 and 60");
   }
@@ -556,20 +817,149 @@ function addEvent(data: CompetitionData, mutation: AddEventMutation): Competitio
         teamId,
         playerId,
         assistPlayerId,
-        type: mutation.type,
-        half: mutation.half,
+        type,
+        half,
         minute,
         addedTime,
-        isDisallowed: mutation.isDisallowed,
+        isDisallowed: isScoreEventType(type) ? mutation.isDisallowed : false,
         notes: null,
         createdAt: nowIso(),
       },
     ],
   };
 
-  return mutation.type === "goal" || mutation.type === "own_goal"
+  return isScoreEventType(type) ? updateMatchOutcome(nextData, match) : nextData;
+}
+
+function updateMatchEvent(
+  data: CompetitionData,
+  mutation: UpdateMatchEventMutation,
+): CompetitionData {
+  const eventId = assertString(mutation.eventId, "Choose a match event");
+  const teamId = assertString(mutation.teamId, "Choose a team");
+  const playerId = assertString(mutation.playerId, "Choose a player");
+  const type = assertMatchEventType(mutation.type);
+  const half = mutation.half;
+  const minute = assertWholeNumber(mutation.minute, "Event minute must be a whole number");
+  const addedTime = assertWholeNumber(mutation.addedTime, "Added time must be a whole number");
+  const matchEvent = data.events.find((event) => event.id === eventId);
+  const player = data.players.find((item) => item.id === playerId);
+  const assistPlayerId =
+    type === "goal" && mutation.assistPlayerId
+      ? assertString(mutation.assistPlayerId, "Choose an assist")
+      : null;
+  const assistPlayer = assistPlayerId
+    ? data.players.find((item) => item.id === assistPlayerId)
+    : null;
+
+  if (!matchEvent) {
+    throw new Error("Match event was not found");
+  }
+
+  const match = data.matches.find((item) => item.id === matchEvent.matchId);
+
+  if (!match) {
+    throw new Error("Selected match was not found");
+  }
+
+  if (!player) {
+    throw new Error("Selected player was not found");
+  }
+
+  if (teamId !== match.homeTeamId && teamId !== match.awayTeamId) {
+    throw new Error("Choose one of the teams playing this match");
+  }
+
+  if (player.teamId !== teamId) {
+    throw new Error("Choose a player from the selected team");
+  }
+
+  if (assistPlayerId === playerId) {
+    throw new Error("A player cannot assist their own goal");
+  }
+
+  if (assistPlayerId && !assistPlayer) {
+    throw new Error("Selected assist player was not found");
+  }
+
+  if (assistPlayer && assistPlayer.teamId !== teamId) {
+    throw new Error("Choose an assist from the selected team");
+  }
+
+  if (half !== 1 && half !== 2) {
+    throw new Error("Choose a valid match half");
+  }
+
+  if (minute < 1 || minute > MATCH_DURATION_MINUTES) {
+    throw new Error("Event minute must be between 1 and 60");
+  }
+
+  if (addedTime > 20) {
+    throw new Error("Added time must be between 0 and 20");
+  }
+
+  const events = data.events.map((event) =>
+    event.id === eventId
+      ? {
+          ...event,
+          teamId,
+          playerId,
+          assistPlayerId,
+          type,
+          half,
+          minute,
+          addedTime,
+          isDisallowed: isScoreEventType(type) ? mutation.isDisallowed : false,
+        }
+      : event,
+  );
+  const nextData = { ...data, events };
+
+  return isScoreEventType(matchEvent.type) || isScoreEventType(type)
     ? updateMatchOutcome(nextData, match)
     : nextData;
+}
+
+function updateEventAssist(
+  data: CompetitionData,
+  mutation: UpdateEventAssistMutation,
+): CompetitionData {
+  const eventId = assertString(mutation.eventId, "Choose a match event");
+  const matchEvent = data.events.find((event) => event.id === eventId);
+
+  if (!matchEvent) {
+    throw new Error("Match event was not found");
+  }
+
+  if (matchEvent.type !== "goal") {
+    throw new Error("Assists can only be added to goal events");
+  }
+
+  const assistPlayerId = mutation.assistPlayerId
+    ? assertString(mutation.assistPlayerId, "Choose an assist")
+    : null;
+  const assistPlayer = assistPlayerId
+    ? data.players.find((player) => player.id === assistPlayerId)
+    : null;
+
+  if (assistPlayerId === matchEvent.playerId) {
+    throw new Error("A player cannot assist their own goal");
+  }
+
+  if (assistPlayerId && !assistPlayer) {
+    throw new Error("Selected assist player was not found");
+  }
+
+  if (assistPlayer && assistPlayer.teamId !== matchEvent.teamId) {
+    throw new Error("Choose an assist from the selected team");
+  }
+
+  return {
+    ...data,
+    events: data.events.map((event) =>
+      event.id === eventId ? { ...event, assistPlayerId } : event,
+    ),
+  };
 }
 
 function addNewsPost(data: CompetitionData, mutation: AddNewsPostMutation): CompetitionData {
@@ -592,6 +982,31 @@ function addNewsPost(data: CompetitionData, mutation: AddNewsPostMutation): Comp
   };
 }
 
+function updateNewsPost(data: CompetitionData, mutation: UpdateNewsPostMutation): CompetitionData {
+  const postId = assertString(mutation.postId, "Choose a news post");
+  const title = assertString(mutation.title, "News title is required");
+  const body = assertString(mutation.body, "News body is required");
+  const publishedAt = assertIsoDate(mutation.publishedAt, "Published time is required");
+
+  if (!data.newsPosts.some((post) => post.id === postId)) {
+    throw new Error("News post was not found");
+  }
+
+  return {
+    ...data,
+    newsPosts: data.newsPosts.map((post) =>
+      post.id === postId
+        ? {
+            ...post,
+            title,
+            body,
+            publishedAt,
+          }
+        : post,
+    ),
+  };
+}
+
 function updateEventDisallowed(
   data: CompetitionData,
   mutation: UpdateEventDisallowedMutation,
@@ -602,7 +1017,7 @@ function updateEventDisallowed(
     throw new Error("Match event was not found");
   }
 
-  if (matchEvent.type !== "goal" && matchEvent.type !== "own_goal") {
+  if (!isScoreEventType(matchEvent.type)) {
     return data;
   }
 
@@ -690,7 +1105,7 @@ function deleteMatchEvent(data: CompetitionData, id: string): CompetitionData {
   };
   const match = nextData.matches.find((item) => item.id === matchEvent.matchId);
 
-  return match && (matchEvent.type === "goal" || matchEvent.type === "own_goal")
+  return match && isScoreEventType(matchEvent.type)
     ? updateMatchOutcome(nextData, match)
     : nextData;
 }
@@ -714,11 +1129,20 @@ export async function applyLocalCompetitionMutation(mutation: LocalCompetitionMu
     case "addTeam":
       nextData = addTeam(data, mutation);
       break;
+    case "updateTeam":
+      nextData = updateTeam(data, mutation);
+      break;
     case "addPlayer":
       nextData = addPlayer(data, mutation);
       break;
+    case "updatePlayer":
+      nextData = updatePlayer(data, mutation);
+      break;
     case "addMatch":
       nextData = addMatch(data, mutation);
+      break;
+    case "updateMatch":
+      nextData = updateMatch(data, mutation);
       break;
     case "updateTimer":
       nextData = updateTimer(data, mutation);
@@ -732,8 +1156,17 @@ export async function applyLocalCompetitionMutation(mutation: LocalCompetitionMu
     case "addEvent":
       nextData = addEvent(data, mutation);
       break;
+    case "updateMatchEvent":
+      nextData = updateMatchEvent(data, mutation);
+      break;
+    case "updateEventAssist":
+      nextData = updateEventAssist(data, mutation);
+      break;
     case "addNewsPost":
       nextData = addNewsPost(data, mutation);
+      break;
+    case "updateNewsPost":
+      nextData = updateNewsPost(data, mutation);
       break;
     case "updateEventDisallowed":
       nextData = updateEventDisallowed(data, mutation);

@@ -25,7 +25,7 @@ export default async function StandingsPage() {
 
       <div className="mt-8 space-y-6">
         <StandingsTable rows={standings} />
-        <QualificationBracket />
+        <QualificationBracket data={data} standings={standings} />
       </div>
     </main>
   );

@@ -17,12 +17,15 @@ export function PlayerLeaderList({
   const leaders = rows.filter((row) => row[valueKey] > 0).slice(0, 5);
 
   return (
-    <section className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
+    <section className="animate-rise-in motion-card rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
       <h2 className="text-lg font-black text-zinc-950">{title}</h2>
       <div className="mt-4 space-y-3">
         {leaders.length > 0 ? (
           leaders.map((row, index) => (
-            <div key={row.player.id} className="flex items-center justify-between gap-4">
+            <div
+              key={row.player.id}
+              className="flex items-center justify-between gap-4 rounded-md transition duration-200 hover:-translate-y-0.5 hover:bg-zinc-50"
+            >
               <div className="flex min-w-0 items-center gap-3">
                 <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-zinc-100 text-xs font-black text-zinc-500">
                   {index + 1}
@@ -50,12 +53,15 @@ export function CleanSheetLeaders({ rows }: { rows: CleanSheetRow[] }) {
   const leaders = rows.filter((row) => row.cleanSheets > 0).slice(0, 5);
 
   return (
-    <section className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
+    <section className="animate-rise-in motion-card rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
       <h2 className="text-lg font-black text-zinc-950">Goalkeeper Clean Sheets</h2>
       <div className="mt-4 space-y-3">
         {leaders.length > 0 ? (
           leaders.map((row, index) => (
-            <div key={row.player.id} className="flex items-center justify-between gap-4">
+            <div
+              key={row.player.id}
+              className="flex items-center justify-between gap-4 rounded-md transition duration-200 hover:-translate-y-0.5 hover:bg-zinc-50"
+            >
               <div className="flex min-w-0 items-center gap-3">
                 <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-zinc-100 text-xs font-black text-zinc-500">
                   {index + 1}

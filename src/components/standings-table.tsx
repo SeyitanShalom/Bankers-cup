@@ -21,7 +21,7 @@ export function StandingsTable({ rows, compact = false }: StandingsTableProps) {
     : "px-3 py-3 text-center font-semibold text-zinc-700";
 
   return (
-    <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
+    <div className="animate-rise-in motion-card overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
       <div className={compact ? "" : "overflow-x-auto"}>
         <table className={tableClassName}>
           <thead className="bg-zinc-950 text-left text-xs uppercase text-white">
@@ -46,7 +46,7 @@ export function StandingsTable({ rows, compact = false }: StandingsTableProps) {
             {visibleRows.map((row) => (
               <tr
                 key={row.team.id}
-                className={`border-t border-zinc-100 ${
+                className={`border-t border-zinc-100 transition duration-200 hover:bg-amber-50/70 ${
                   row.qualified ? "bg-emerald-50/55" : "bg-white"
                 }`}
               >

@@ -15,8 +15,11 @@ const statusStyles: Record<MatchStatus, string> = {
 export function StatusPill({ status }: StatusPillProps) {
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-bold capitalize ${statusStyles[status]}`}
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold capitalize transition ${statusStyles[status]}`}
     >
+      {status === "live" ? (
+        <span className="live-pulse-dot h-1.5 w-1.5 rounded-full bg-red-600" aria-hidden="true" />
+      ) : null}
       {status}
     </span>
   );

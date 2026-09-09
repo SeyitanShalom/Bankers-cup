@@ -23,7 +23,11 @@ export function LiveMatchScore({ match, variant = "card" }: LiveMatchScoreProps)
 
   if (variant === "large") {
     return (
-      <div className="grid place-items-center rounded-lg border border-zinc-200 bg-zinc-50 px-8 py-5">
+      <div
+        className={`grid place-items-center rounded-lg border border-zinc-200 bg-zinc-50 px-8 py-5 ${
+          liveMatch.status === "live" ? "score-glow" : ""
+        }`}
+      >
         <p className="text-5xl font-black text-zinc-950">
           {showScore ? liveMatch.homeScore ?? 0 : "-"} -{" "}
           {showScore ? liveMatch.awayScore ?? 0 : "-"}
@@ -46,7 +50,11 @@ export function LiveMatchScore({ match, variant = "card" }: LiveMatchScoreProps)
   }
 
   return (
-    <div className="grid min-w-20 place-items-center rounded-md border border-zinc-200 bg-white px-3 py-2 text-xl font-black text-zinc-950 shadow-sm">
+    <div
+      className={`grid min-w-20 place-items-center rounded-md border border-zinc-200 bg-white px-3 py-2 text-xl font-black text-zinc-950 shadow-sm ${
+        liveMatch.status === "live" ? "score-glow" : ""
+      }`}
+    >
       {liveMatch.homeScore ?? 0} - {liveMatch.awayScore ?? 0}
       {hasPenaltyScore(liveMatch) && (
         <span className="mt-1 text-xs font-semibold text-zinc-500">

@@ -11,14 +11,17 @@ import {
   LogOut,
   Newspaper,
   Pause,
+  Pencil,
   Play,
   RefreshCw,
   RotateCcw,
+  Save,
   Shield,
   Shirt,
   Trash2,
   Trophy,
   Upload,
+  X,
 } from "lucide-react";
 import { MatchTimelineList } from "@/components/match-timeline-list";
 import { TeamCrest } from "@/components/team-crest";
@@ -317,6 +320,44 @@ function isValidOptionalWholeNumber(value: number | null) {
   return value === null || (Number.isInteger(value) && value >= 0);
 }
 
+function toDatetimeLocalValue(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const timezoneOffset = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - timezoneOffset).toISOString().slice(0, 16);
+}
+
+function matchHasRecordedActivity(data: CompetitionData, match: Match) {
+  return (
+    match.status !== "scheduled" ||
+    match.homeScore !== null ||
+    match.awayScore !== null ||
+    match.homePenaltyScore !== null ||
+    match.awayPenaltyScore !== null ||
+    Boolean(match.winnerTeamId) ||
+    data.events.some((event) => event.matchId === match.id) ||
+    data.penalties.some((event) => event.matchId === match.id)
+  );
+}
+
+function playerHasRecordedActivity(data: CompetitionData, playerId: string) {
+  return (
+    data.events.some(
+      (event) => event.playerId === playerId || event.assistPlayerId === playerId,
+    ) ||
+    data.penalties.some((event) => event.playerId === playerId) ||
+    data.matches.some(
+      (match) =>
+        match.homeCleanSheetGoalkeeperId === playerId ||
+        match.awayCleanSheetGoalkeeperId === playerId,
+    )
+  );
+}
+
 function mergeMatchEvents(events: MatchEvent[], updatedEvents: MatchEvent[]) {
   const eventsById = new Map(events.map((event) => [event.id, event]));
 
@@ -325,6 +366,16 @@ function mergeMatchEvents(events: MatchEvent[], updatedEvents: MatchEvent[]) {
   });
 
   return Array.from(eventsById.values());
+}
+
+function getAssistPlayerOptions(players: Player[], matchEvent: Pick<MatchEvent, "teamId" | "playerId" | "type">) {
+  if (matchEvent.type !== "goal") {
+    return [];
+  }
+
+  return players.filter(
+    (player) => player.teamId === matchEvent.teamId && player.id !== matchEvent.playerId,
+  );
 }
 
 function updateDataWithMatchOutcome(
@@ -378,6 +429,14 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
   const [selectedMatchId, setSelectedMatchId] = useState(() =>
     getInitialSelectedMatchId(initialData),
   );
+  const [editingTeamId, setEditingTeamId] = useState<string | null>(null);
+  const [editingPlayerId, setEditingPlayerId] = useState<string | null>(null);
+  const [editingMatchId, setEditingMatchId] = useState<string | null>(null);
+  const [editingNewsPostId, setEditingNewsPostId] = useState<string | null>(null);
+  const [editingEventId, setEditingEventId] = useState<string | null>(null);
+  const [editingEventTeamId, setEditingEventTeamId] = useState("");
+  const [editingEventType, setEditingEventType] = useState<MatchEventType>("goal");
+  const [editingEventPlayerId, setEditingEventPlayerId] = useState("");
   const [selectedEventTeamId, setSelectedEventTeamId] = useState(() =>
     getInitialEventTeamId(initialData),
   );
@@ -459,6 +518,21 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       nextData.teams.some((team) => team.id === current)
         ? current
         : getInitialEventTeamId(nextData),
+    );
+    setEditingTeamId((current) =>
+      current && nextData.teams.some((team) => team.id === current) ? current : null,
+    );
+    setEditingPlayerId((current) =>
+      current && nextData.players.some((player) => player.id === current) ? current : null,
+    );
+    setEditingMatchId((current) =>
+      current && nextData.matches.some((match) => match.id === current) ? current : null,
+    );
+    setEditingNewsPostId((current) =>
+      current && nextData.newsPosts.some((post) => post.id === current) ? current : null,
+    );
+    setEditingEventId((current) =>
+      current && nextData.events.some((event) => event.id === current) ? current : null,
     );
   }
 
@@ -645,7 +719,8 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
 
       if (logoFile && logoFile.size > 0) {
         const extension = logoFile.name.split(".").pop() ?? "png";
-        const path = `${slugify(name)}-${Date.now()}.${extension}`;
+        const originalName = slugify(logoFile.name.replace(/\.[^.]+$/, "")) || "logo";
+        const path = `${slugify(name)}-${originalName}-${logoFile.size}-${logoFile.lastModified}.${extension}`;
         const upload = await db.storage.from("team-logos").upload(path, logoFile, {
           upsert: true,
         });
@@ -664,6 +739,82 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       setMessage(`${name} added`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to add team");
+    }
+  }
+
+  async function updateTeam(event: FormEvent<HTMLFormElement>, team: Team) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const name = String(form.get("name") ?? "").trim();
+    const logoFile = form.get("logo") instanceof File ? (form.get("logo") as File) : null;
+
+    if (!name) {
+      setMessage("Team name is required");
+      return;
+    }
+
+    if (
+      data.teams.some(
+        (item) => item.id !== team.id && item.name.toLowerCase() === name.toLowerCase(),
+      )
+    ) {
+      setMessage("That team already exists");
+      return;
+    }
+
+    try {
+      let logoUrl: string | null | undefined;
+
+      if (localMode) {
+        if (logoFile && logoFile.size > 0) {
+          logoUrl = await readFileAsDataUrl(logoFile);
+        }
+
+        const mutation: LocalCompetitionMutation = {
+          action: "updateTeam",
+          teamId: team.id,
+          name,
+        };
+
+        if (logoUrl !== undefined) {
+          mutation.logoUrl = logoUrl;
+        }
+
+        await saveLocalAndSync(mutation, `${name} updated locally`);
+        setEditingTeamId(null);
+        return;
+      }
+
+      const db = getWritableSupabase();
+      if (!db) return;
+
+      if (logoFile && logoFile.size > 0) {
+        const extension = logoFile.name.split(".").pop() ?? "png";
+        const path = `${slugify(name)}-${team.id}.${extension}`;
+        const upload = await db.storage.from("team-logos").upload(path, logoFile, {
+          upsert: true,
+        });
+
+        if (upload.error) throw upload.error;
+
+        const publicUrl = db.storage.from("team-logos").getPublicUrl(path);
+        logoUrl = publicUrl.data.publicUrl;
+      }
+
+      const patch: { name: string; logo_url?: string | null } = { name };
+
+      if (logoUrl !== undefined) {
+        patch.logo_url = logoUrl;
+      }
+
+      const { error } = await db.from("teams").update(patch).eq("id", team.id);
+      if (error) throw error;
+
+      await refreshData();
+      setEditingTeamId(null);
+      setMessage(`${name} updated`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to update team");
     }
   }
 
@@ -725,6 +876,82 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
     }
   }
 
+  async function updatePlayer(event: FormEvent<HTMLFormElement>, player: Player) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const name = String(form.get("name") ?? "").trim();
+    const teamId = String(form.get("teamId") ?? "");
+    const position = String(form.get("position") ?? player.position) as PlayerPosition;
+    const jerseyNumber = Number(form.get("jerseyNumber"));
+    const hasRecordedActivity = playerHasRecordedActivity(data, player.id);
+
+    if (!name || !teamId || !Number.isInteger(jerseyNumber)) {
+      setMessage("Player name, team, and jersey number are required");
+      return;
+    }
+
+    if (jerseyNumber < 1 || jerseyNumber > 99) {
+      setMessage("Jersey number must be between 1 and 99");
+      return;
+    }
+
+    if (hasRecordedActivity && teamId !== player.teamId) {
+      setMessage("Only name, position, and jersey number can be edited after player activity");
+      return;
+    }
+
+    const duplicateNumber = data.players.some(
+      (item) =>
+        item.id !== player.id &&
+        item.teamId === teamId &&
+        item.jerseyNumber === jerseyNumber,
+    );
+
+    if (duplicateNumber) {
+      setMessage("That jersey number is already taken for this team");
+      return;
+    }
+
+    try {
+      if (localMode) {
+        await saveLocalAndSync(
+          {
+            action: "updatePlayer",
+            playerId: player.id,
+            name,
+            teamId,
+            position,
+            jerseyNumber,
+          },
+          `${name} updated locally`,
+        );
+        setEditingPlayerId(null);
+        return;
+      }
+
+      const db = getWritableSupabase();
+      if (!db) return;
+
+      const { error } = await db
+        .from("players")
+        .update({
+          name,
+          team_id: teamId,
+          position,
+          jersey_number: jerseyNumber,
+        })
+        .eq("id", player.id);
+
+      if (error) throw error;
+
+      await refreshData();
+      setEditingPlayerId(null);
+      setMessage(`${name} updated`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to update player");
+    }
+  }
+
   async function addMatch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formElement = event.currentTarget;
@@ -780,6 +1007,73 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
     }
   }
 
+  async function updateMatch(event: FormEvent<HTMLFormElement>, match: Match) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const stage = String(form.get("stage") ?? match.stage) as MatchStage;
+    const homeTeamId = String(form.get("homeTeamId") ?? match.homeTeamId);
+    const awayTeamId = String(form.get("awayTeamId") ?? match.awayTeamId);
+    const kickoff = String(form.get("kickoff") ?? "");
+    const venue = String(form.get("venue") ?? "").trim();
+    const hasRecordedActivity = matchHasRecordedActivity(data, match);
+
+    if (!homeTeamId || !awayTeamId || homeTeamId === awayTeamId || !kickoff || !venue) {
+      setMessage("Choose two different teams, kickoff time, and venue");
+      return;
+    }
+
+    if (
+      hasRecordedActivity &&
+      (stage !== match.stage || homeTeamId !== match.homeTeamId || awayTeamId !== match.awayTeamId)
+    ) {
+      setMessage("Only kickoff and venue can be edited after a fixture has match activity");
+      return;
+    }
+
+    const kickoffIso = new Date(kickoff).toISOString();
+
+    try {
+      if (localMode) {
+        await saveLocalAndSync(
+          {
+            action: "updateMatch",
+            matchId: match.id,
+            stage,
+            homeTeamId,
+            awayTeamId,
+            kickoff: kickoffIso,
+            venue,
+          },
+          "Fixture updated locally",
+        );
+        setEditingMatchId(null);
+        return;
+      }
+
+      const db = getWritableSupabase();
+      if (!db) return;
+
+      const { error } = await db
+        .from("matches")
+        .update({
+          stage,
+          home_team_id: homeTeamId,
+          away_team_id: awayTeamId,
+          kickoff: kickoffIso,
+          venue,
+        })
+        .eq("id", match.id);
+
+      if (error) throw error;
+
+      await refreshData();
+      setEditingMatchId(null);
+      setMessage("Fixture updated");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to update fixture");
+    }
+  }
+
   async function addNewsPost(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formElement = event.currentTarget;
@@ -822,6 +1116,65 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       setMessage("News post added");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to add news post");
+    }
+  }
+
+  async function updateNewsPost(event: FormEvent<HTMLFormElement>, post: NewsPost) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const title = String(form.get("title") ?? "").trim();
+    const body = String(form.get("body") ?? "").trim();
+    const publishedAt = String(form.get("publishedAt") ?? "");
+
+    if (!title || !body || !publishedAt) {
+      setMessage("News title, body, and published time are required");
+      return;
+    }
+
+    const publishedDate = new Date(publishedAt);
+
+    if (Number.isNaN(publishedDate.getTime())) {
+      setMessage("Published time is required");
+      return;
+    }
+
+    const publishedAtIso = publishedDate.toISOString();
+
+    try {
+      if (localMode) {
+        await saveLocalAndSync(
+          {
+            action: "updateNewsPost",
+            postId: post.id,
+            title,
+            body,
+            publishedAt: publishedAtIso,
+          },
+          "News post updated locally",
+        );
+        setEditingNewsPostId(null);
+        return;
+      }
+
+      const db = getWritableSupabase();
+      if (!db) return;
+
+      const { error } = await db
+        .from("news_posts")
+        .update({
+          title,
+          body,
+          published_at: publishedAtIso,
+        })
+        .eq("id", post.id);
+
+      if (error) throw error;
+
+      await refreshData();
+      setEditingNewsPostId(null);
+      setMessage("News post updated");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to update news post");
     }
   }
 
@@ -1083,6 +1436,9 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
     }
 
     const matchForEvent = data.matches.find((match) => match.id === matchId);
+    const assistPlayer = assistPlayerId
+      ? data.players.find((player) => player.id === assistPlayerId)
+      : null;
 
     if (!matchForEvent) {
       setMessage("Selected match was not found");
@@ -1101,6 +1457,16 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
 
     if (type === "goal" && assistPlayerId === playerId) {
       setMessage("A player cannot assist their own goal");
+      return;
+    }
+
+    if (type === "goal" && assistPlayerId && !assistPlayer) {
+      setMessage("Selected assist player was not found");
+      return;
+    }
+
+    if (type === "goal" && assistPlayer && assistPlayer.teamId !== teamId) {
+      setMessage("Choose an assist from the selected team");
       return;
     }
 
@@ -1172,6 +1538,215 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       setMessage("Match event added");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to add match event");
+    }
+  }
+
+  function startEditingMatchEvent(matchEvent: MatchEvent) {
+    setEditingEventId(matchEvent.id);
+    setEditingEventTeamId(matchEvent.teamId);
+    setEditingEventType(matchEvent.type);
+    setEditingEventPlayerId(matchEvent.playerId);
+  }
+
+  async function updateMatchEvent(
+    event: FormEvent<HTMLFormElement>,
+    matchEvent: MatchEvent,
+  ) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const teamId = String(form.get("teamId") ?? "");
+    const playerId = String(form.get("playerId") ?? "");
+    const assistPlayerId = String(form.get("assistPlayerId") ?? "") || null;
+    const type = String(form.get("type") ?? matchEvent.type) as MatchEventType;
+    const half = Number(form.get("half")) as 1 | 2;
+    const minute = Number(form.get("minute"));
+    const addedTime = Number(form.get("addedTime") ?? 0);
+    const isDisallowed = isScoreEventType(type) && form.get("isDisallowed") === "on";
+    const matchForEvent = data.matches.find((match) => match.id === matchEvent.matchId);
+    const player = data.players.find((item) => item.id === playerId);
+    const assistPlayer = assistPlayerId
+      ? data.players.find((item) => item.id === assistPlayerId)
+      : null;
+
+    if (!eventTypes.includes(type)) {
+      setMessage("Choose a valid match event type");
+      return;
+    }
+
+    if (!matchForEvent) {
+      setMessage("Selected match was not found");
+      return;
+    }
+
+    if (!teamId || !playerId || !player || !Number.isInteger(minute)) {
+      setMessage("Choose a team, player, and event minute");
+      return;
+    }
+
+    if (teamId !== matchForEvent.homeTeamId && teamId !== matchForEvent.awayTeamId) {
+      setMessage("Choose one of the teams playing this match");
+      return;
+    }
+
+    if (player.teamId !== teamId) {
+      setMessage("Choose a player from the selected team");
+      return;
+    }
+
+    if (half !== 1 && half !== 2) {
+      setMessage("Choose a valid match half");
+      return;
+    }
+
+    if (minute < 1 || minute > MATCH_DURATION_MINUTES) {
+      setMessage("Event minute must be between 1 and 60");
+      return;
+    }
+
+    if (!Number.isInteger(addedTime) || addedTime < 0 || addedTime > 20) {
+      setMessage("Added time must be between 0 and 20");
+      return;
+    }
+
+    if (type === "goal" && assistPlayerId === playerId) {
+      setMessage("A player cannot assist their own goal");
+      return;
+    }
+
+    if (type === "goal" && assistPlayerId && !assistPlayer) {
+      setMessage("Selected assist player was not found");
+      return;
+    }
+
+    if (type === "goal" && assistPlayer && assistPlayer.teamId !== teamId) {
+      setMessage("Choose an assist from the selected team");
+      return;
+    }
+
+    try {
+      if (localMode) {
+        await saveLocalAndSync(
+          {
+            action: "updateMatchEvent",
+            eventId: matchEvent.id,
+            teamId,
+            playerId,
+            assistPlayerId,
+            type,
+            half,
+            minute,
+            addedTime,
+            isDisallowed,
+          },
+          "Match event updated locally",
+        );
+        setEditingEventId(null);
+        return;
+      }
+
+      const db = getWritableSupabase();
+      if (!db) return;
+
+      const { data: updatedRow, error } = await db
+        .from("match_events")
+        .update({
+          team_id: teamId,
+          player_id: playerId,
+          assist_player_id: type === "goal" ? assistPlayerId : null,
+          event_type: type,
+          half,
+          minute,
+          added_time: addedTime,
+          is_disallowed: isDisallowed,
+        })
+        .eq("id", matchEvent.id)
+        .select("*")
+        .maybeSingle();
+
+      if (error) throw error;
+      if (!updatedRow) throw new Error("Match event was updated but not returned");
+
+      const updatedEvent = mapSupabaseMatchEvent(updatedRow as SupabaseMatchEventRow);
+
+      if (isScoreEventType(matchEvent.type) || isScoreEventType(type)) {
+        const outcome = await saveLiveMatchOutcomeFromEvents(matchForEvent);
+
+        setData((current) => ({
+          ...updateDataWithMatchOutcome(current, matchEvent.matchId, outcome),
+          events: mergeMatchEvents(current.events, [updatedEvent]),
+        }));
+      } else {
+        setData((current) => ({
+          ...current,
+          events: mergeMatchEvents(current.events, [updatedEvent]),
+        }));
+      }
+
+      await refreshData();
+      setEditingEventId(null);
+      setMessage("Match event updated");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to update match event");
+    }
+  }
+
+  async function updateEventAssist(
+    event: FormEvent<HTMLFormElement>,
+    matchEvent: MatchEvent,
+  ) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const assistPlayerId = String(form.get("assistPlayerId") ?? "") || null;
+
+    if (matchEvent.type !== "goal") {
+      setMessage("Assists can only be added to goal events");
+      return;
+    }
+
+    const assistOptions = getAssistPlayerOptions(data.players, matchEvent);
+
+    if (assistPlayerId && !assistOptions.some((player) => player.id === assistPlayerId)) {
+      setMessage("Choose an assist from the selected team");
+      return;
+    }
+
+    try {
+      if (localMode) {
+        await saveLocalAndSync(
+          {
+            action: "updateEventAssist",
+            eventId: matchEvent.id,
+            assistPlayerId,
+          },
+          assistPlayerId ? "Assist updated locally" : "Assist cleared locally",
+        );
+        return;
+      }
+
+      const db = getWritableSupabase();
+      if (!db) return;
+
+      const { data: updatedRow, error } = await db
+        .from("match_events")
+        .update({ assist_player_id: assistPlayerId })
+        .eq("id", matchEvent.id)
+        .select("*")
+        .maybeSingle();
+
+      if (error) throw error;
+      if (!updatedRow) throw new Error("Match event was updated but not returned");
+
+      const updatedEvent = mapSupabaseMatchEvent(updatedRow as SupabaseMatchEventRow);
+
+      setData((current) => ({
+        ...current,
+        events: mergeMatchEvents(current.events, [updatedEvent]),
+      }));
+
+      await refreshData();
+      setMessage(assistPlayerId ? "Assist updated" : "Assist cleared");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to update assist");
     }
   }
 
@@ -1622,26 +2197,98 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
           <section className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
             <h2 className="text-2xl font-black text-zinc-950">Teams</h2>
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              {data.teams.map((team) => (
-                <div key={team.id} className="flex items-center gap-3 rounded-md bg-zinc-50 p-3">
-                  <TeamCrest team={team} size="md" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-extrabold text-zinc-950">{team.name}</p>
-                    <p className="text-xs font-semibold text-zinc-500">
-                      {data.players.filter((player) => player.teamId === team.id).length} players
-                    </p>
+              {data.teams.map((team) => {
+                const isEditing = editingTeamId === team.id;
+
+                return (
+                  <div key={team.id} className="rounded-md bg-zinc-50 p-3">
+                    {isEditing ? (
+                      <form onSubmit={(event) => updateTeam(event, team)} className="grid gap-3">
+                        <div className="flex items-center gap-3">
+                          <TeamCrest team={team} size="md" />
+                          <p className="min-w-0 flex-1 truncate font-extrabold text-zinc-950">
+                            Edit team
+                          </p>
+                        </div>
+                        <label
+                          className="grid gap-2 text-sm font-bold text-zinc-700"
+                          htmlFor={`edit-team-name-${team.id}`}
+                        >
+                          Team name
+                          <input
+                            id={`edit-team-name-${team.id}`}
+                            name="name"
+                            defaultValue={team.name}
+                            required
+                            className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                          />
+                        </label>
+                        <label
+                          className="grid gap-2 text-sm font-bold text-zinc-700"
+                          htmlFor={`edit-team-logo-${team.id}`}
+                        >
+                          Team logo
+                          <input
+                            id={`edit-team-logo-${team.id}`}
+                            name="logo"
+                            type="file"
+                            accept="image/*"
+                            className="rounded-md border border-dashed border-zinc-300 bg-white p-3 text-sm text-zinc-600 file:mr-3 file:rounded-md file:border-0 file:bg-zinc-950 file:px-3 file:py-2 file:text-sm file:font-bold file:text-white"
+                          />
+                        </label>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="submit"
+                            disabled={editBlocked}
+                            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-black text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-45"
+                          >
+                            <Save className="h-4 w-4" aria-hidden="true" />
+                            Save team
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingTeamId(null)}
+                            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-4 text-sm font-black text-zinc-700 transition hover:border-emerald-300 hover:text-emerald-800"
+                          >
+                            <X className="h-4 w-4" aria-hidden="true" />
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      <div className="flex items-center gap-3">
+                        <TeamCrest team={team} size="md" />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-extrabold text-zinc-950">{team.name}</p>
+                          <p className="text-xs font-semibold text-zinc-500">
+                            {data.players.filter((player) => player.teamId === team.id).length} players
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setEditingTeamId(team.id)}
+                          disabled={editBlocked}
+                          className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-zinc-300 bg-white text-zinc-700 transition hover:border-emerald-300 hover:text-emerald-800 disabled:cursor-not-allowed disabled:opacity-45"
+                          title={`Edit ${team.name}`}
+                          aria-label={`Edit ${team.name}`}
+                        >
+                          <Pencil className="h-4 w-4" aria-hidden="true" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deleteTeam(team)}
+                          disabled={editBlocked}
+                          className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-red-200 bg-white text-red-600 transition hover:bg-red-50 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-45"
+                          title={`Delete ${team.name}`}
+                          aria-label={`Delete ${team.name}`}
+                        >
+                          <Trash2 className="h-4 w-4" aria-hidden="true" />
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => deleteTeam(team)}
-                    className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-red-200 bg-white text-red-600 transition hover:bg-red-50 hover:text-red-700"
-                    title={`Delete ${team.name}`}
-                    aria-label={`Delete ${team.name}`}
-                  >
-                    <Trash2 className="h-4 w-4" aria-hidden="true" />
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </section>
         </section>
@@ -1709,31 +2356,149 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
               {data.players.map((player) => {
                 const team = data.teams.find((item) => item.id === player.teamId);
                 const stats = playerStats.find((item) => item.player.id === player.id);
+                const isEditing = editingPlayerId === player.id;
+                const hasRecordedActivity = playerHasRecordedActivity(data, player.id);
 
                 return (
-                  <div key={player.id} className="grid grid-cols-[auto_1fr_auto_auto] gap-3 py-3">
-                    <span className="grid h-9 w-9 place-items-center rounded-md bg-zinc-950 text-sm font-black text-white">
-                      {player.jerseyNumber}
-                    </span>
-                    <div className="min-w-0">
-                      <p className="truncate font-extrabold text-zinc-950">{player.name}</p>
-                      <p className="truncate text-sm font-semibold text-zinc-500">
-                        {team?.name ?? "No team"} - {player.position}
-                      </p>
-                    </div>
-                    <div className="text-right text-xs font-bold text-zinc-500">
-                      <p>{stats?.goals ?? 0} G</p>
-                      <p>{stats?.assists ?? 0} A</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => deletePlayer(player)}
-                      className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-red-200 bg-white text-red-600 transition hover:bg-red-50 hover:text-red-700"
-                      title={`Delete ${player.name}`}
-                      aria-label={`Delete ${player.name}`}
-                    >
-                      <Trash2 className="h-4 w-4" aria-hidden="true" />
-                    </button>
+                  <div key={player.id} className="py-3">
+                    {isEditing ? (
+                      <form
+                        onSubmit={(event) => updatePlayer(event, player)}
+                        className="grid gap-3 rounded-md border border-emerald-200 bg-emerald-50/45 p-3"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="grid h-9 w-9 place-items-center rounded-md bg-zinc-950 text-sm font-black text-white">
+                            {player.jerseyNumber}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="font-extrabold text-zinc-950">Edit player</p>
+                            {hasRecordedActivity ? (
+                              <p className="mt-1 text-xs font-bold text-amber-800">
+                                Team is locked because this player has match activity.
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+                        <label
+                          className="grid gap-2 text-sm font-bold text-zinc-700"
+                          htmlFor={`edit-player-name-${player.id}`}
+                        >
+                          Player name
+                          <input
+                            id={`edit-player-name-${player.id}`}
+                            name="name"
+                            defaultValue={player.name}
+                            required
+                            className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                          />
+                        </label>
+                        {hasRecordedActivity ? (
+                          <input type="hidden" name="teamId" value={player.teamId} />
+                        ) : null}
+                        <label
+                          className="grid gap-2 text-sm font-bold text-zinc-700"
+                          htmlFor={`edit-player-team-${player.id}`}
+                        >
+                          Team
+                          <select
+                            id={`edit-player-team-${player.id}`}
+                            name="teamId"
+                            defaultValue={player.teamId}
+                            disabled={hasRecordedActivity}
+                            required
+                            className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-500"
+                          >
+                            {data.teams.map((item) => (
+                              <option key={item.id} value={item.id}>
+                                {item.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <label
+                            className="grid gap-2 text-sm font-bold text-zinc-700"
+                            htmlFor={`edit-player-position-${player.id}`}
+                          >
+                            Position
+                            <select
+                              id={`edit-player-position-${player.id}`}
+                              name="position"
+                              defaultValue={player.position}
+                              className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                            >
+                              {positions.map((position) => (
+                                <option key={position} value={position}>
+                                  {position}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <NumberInput
+                            id={`edit-jersey-number-${player.id}`}
+                            name="jerseyNumber"
+                            label="Jersey number"
+                            min={1}
+                            max={99}
+                            defaultValue={player.jerseyNumber}
+                          />
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="submit"
+                            disabled={editBlocked}
+                            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-black text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-45"
+                          >
+                            <Save className="h-4 w-4" aria-hidden="true" />
+                            Save player
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingPlayerId(null)}
+                            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-4 text-sm font-black text-zinc-700 transition hover:border-emerald-300 hover:text-emerald-800"
+                          >
+                            <X className="h-4 w-4" aria-hidden="true" />
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      <div className="grid grid-cols-[auto_1fr_auto_auto_auto] gap-3">
+                        <span className="grid h-9 w-9 place-items-center rounded-md bg-zinc-950 text-sm font-black text-white">
+                          {player.jerseyNumber}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="truncate font-extrabold text-zinc-950">{player.name}</p>
+                          <p className="truncate text-sm font-semibold text-zinc-500">
+                            {team?.name ?? "No team"} - {player.position}
+                          </p>
+                        </div>
+                        <div className="text-right text-xs font-bold text-zinc-500">
+                          <p>{stats?.goals ?? 0} G</p>
+                          <p>{stats?.assists ?? 0} A</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setEditingPlayerId(player.id)}
+                          disabled={editBlocked}
+                          className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-zinc-300 bg-white text-zinc-700 transition hover:border-emerald-300 hover:text-emerald-800 disabled:cursor-not-allowed disabled:opacity-45"
+                          title={`Edit ${player.name}`}
+                          aria-label={`Edit ${player.name}`}
+                        >
+                          <Pencil className="h-4 w-4" aria-hidden="true" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deletePlayer(player)}
+                          disabled={editBlocked}
+                          className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-red-200 bg-white text-red-600 transition hover:bg-red-50 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-45"
+                          title={`Delete ${player.name}`}
+                          aria-label={`Delete ${player.name}`}
+                        >
+                          <Trash2 className="h-4 w-4" aria-hidden="true" />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -1745,82 +2510,82 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       {activeTab === "matches" && (
         <section className="mt-6 grid gap-6 lg:grid-cols-[0.75fr_1.25fr]">
           <form onSubmit={addMatch} className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
-            <h2 className="text-2xl font-black text-zinc-950">Add Fixture</h2>
-            <div className="mt-5 grid gap-4">
-              <label className="grid gap-2 text-sm font-bold text-zinc-700" htmlFor="match-stage">
-                Stage
-                <select
-                  id="match-stage"
-                  name="stage"
-                  className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+              <h2 className="text-2xl font-black text-zinc-950">Add Fixture</h2>
+              <div className="mt-5 grid gap-4">
+                <label className="grid gap-2 text-sm font-bold text-zinc-700" htmlFor="match-stage">
+                  Stage
+                  <select
+                    id="match-stage"
+                    name="stage"
+                    className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                  >
+                    {stages.map((stage) => (
+                      <option key={stage} value={stage}>
+                        {formatStage(stage)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="grid gap-2 text-sm font-bold text-zinc-700" htmlFor="home-team">
+                    Home team
+                    <select
+                      id="home-team"
+                      name="homeTeamId"
+                      required
+                      className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                    >
+                      {data.teams.map((team) => (
+                        <option key={team.id} value={team.id}>
+                          {team.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="grid gap-2 text-sm font-bold text-zinc-700" htmlFor="away-team">
+                    Away team
+                    <select
+                      id="away-team"
+                      name="awayTeamId"
+                      required
+                      className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                    >
+                      {data.teams.map((team) => (
+                        <option key={team.id} value={team.id}>
+                          {team.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <label className="grid gap-2 text-sm font-bold text-zinc-700" htmlFor="kickoff">
+                  Kickoff
+                  <input
+                    id="kickoff"
+                    name="kickoff"
+                    type="datetime-local"
+                    required
+                    className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                  />
+                </label>
+                <label className="grid gap-2 text-sm font-bold text-zinc-700" htmlFor="venue">
+                  Venue
+                  <input
+                    id="venue"
+                    name="venue"
+                    required
+                    className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                  />
+                </label>
+                <button
+                  type="submit"
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-black text-white transition hover:bg-emerald-800"
                 >
-                  {stages.map((stage) => (
-                    <option key={stage} value={stage}>
-                      {formatStage(stage)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="grid gap-2 text-sm font-bold text-zinc-700" htmlFor="home-team">
-                  Home team
-                  <select
-                    id="home-team"
-                    name="homeTeamId"
-                    required
-                    className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
-                  >
-                    {data.teams.map((team) => (
-                      <option key={team.id} value={team.id}>
-                        {team.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="grid gap-2 text-sm font-bold text-zinc-700" htmlFor="away-team">
-                  Away team
-                  <select
-                    id="away-team"
-                    name="awayTeamId"
-                    required
-                    className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
-                  >
-                    {data.teams.map((team) => (
-                      <option key={team.id} value={team.id}>
-                        {team.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                  <CalendarPlus className="h-4 w-4" aria-hidden="true" />
+                  Add fixture
+                </button>
               </div>
-              <label className="grid gap-2 text-sm font-bold text-zinc-700" htmlFor="kickoff">
-                Kickoff
-                <input
-                  id="kickoff"
-                  name="kickoff"
-                  type="datetime-local"
-                  required
-                  className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
-                />
-              </label>
-              <label className="grid gap-2 text-sm font-bold text-zinc-700" htmlFor="venue">
-                Venue
-                <input
-                  id="venue"
-                  name="venue"
-                  required
-                  className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
-                />
-              </label>
-              <button
-                type="submit"
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-black text-white transition hover:bg-emerald-800"
-              >
-                <CalendarPlus className="h-4 w-4" aria-hidden="true" />
-                Add fixture
-              </button>
-            </div>
-          </form>
+            </form>
 
           <section className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
             <h2 className="text-2xl font-black text-zinc-950">Match List</h2>
@@ -1828,30 +2593,171 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
               {data.matches.map((match) => {
                 const home = data.teams.find((team) => team.id === match.homeTeamId);
                 const away = data.teams.find((team) => team.id === match.awayTeamId);
+                const isEditing = editingMatchId === match.id;
+                const hasRecordedActivity = matchHasRecordedActivity(data, match);
 
                 return (
-                  <div key={match.id} className="grid gap-3 py-3 sm:grid-cols-[1fr_auto]">
-                    <div className="min-w-0">
-                      <p className="truncate font-extrabold text-zinc-950">
-                        {home?.name ?? "Home"} vs {away?.name ?? "Away"}
-                      </p>
-                      <p className="text-sm font-semibold text-zinc-500">
-                        {formatStage(match.stage)} - {formatKickoff(match.kickoff)} -{" "}
-                        {match.venue}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <StatusPill status={match.status} />
+                  <div key={match.id} className="py-3">
+                    {isEditing ? (
+                      <form
+                        onSubmit={(event) => updateMatch(event, match)}
+                        className="grid gap-3 rounded-md border border-emerald-200 bg-emerald-50/45 p-3"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <p className="font-extrabold text-zinc-950">Edit fixture</p>
+                            {hasRecordedActivity ? (
+                              <p className="mt-1 text-xs font-bold text-amber-800">
+                                Teams and stage are locked because this fixture has match activity.
+                              </p>
+                            ) : null}
+                          </div>
+                          <StatusPill status={match.status} />
+                        </div>
+
+                        <label
+                          className="grid gap-2 text-sm font-bold text-zinc-700"
+                          htmlFor={`edit-match-stage-${match.id}`}
+                        >
+                          Stage
+                          <select
+                            id={`edit-match-stage-${match.id}`}
+                            name="stage"
+                            defaultValue={match.stage}
+                            disabled={hasRecordedActivity}
+                            className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-500"
+                          >
+                            {stages.map((stage) => (
+                              <option key={stage} value={stage}>
+                                {formatStage(stage)}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <label
+                            className="grid gap-2 text-sm font-bold text-zinc-700"
+                            htmlFor={`edit-home-team-${match.id}`}
+                          >
+                            Home team
+                            <select
+                              id={`edit-home-team-${match.id}`}
+                              name="homeTeamId"
+                              defaultValue={match.homeTeamId}
+                              disabled={hasRecordedActivity}
+                              required
+                              className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-500"
+                            >
+                              {data.teams.map((team) => (
+                                <option key={team.id} value={team.id}>
+                                  {team.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label
+                            className="grid gap-2 text-sm font-bold text-zinc-700"
+                            htmlFor={`edit-away-team-${match.id}`}
+                          >
+                            Away team
+                            <select
+                              id={`edit-away-team-${match.id}`}
+                              name="awayTeamId"
+                              defaultValue={match.awayTeamId}
+                              disabled={hasRecordedActivity}
+                              required
+                              className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-500"
+                            >
+                              {data.teams.map((team) => (
+                                <option key={team.id} value={team.id}>
+                                  {team.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+                        <label
+                          className="grid gap-2 text-sm font-bold text-zinc-700"
+                          htmlFor={`edit-kickoff-${match.id}`}
+                        >
+                          Kickoff
+                          <input
+                            id={`edit-kickoff-${match.id}`}
+                            name="kickoff"
+                            type="datetime-local"
+                            required
+                            defaultValue={toDatetimeLocalValue(match.kickoff)}
+                            className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                          />
+                        </label>
+                        <label
+                          className="grid gap-2 text-sm font-bold text-zinc-700"
+                          htmlFor={`edit-venue-${match.id}`}
+                        >
+                          Venue
+                          <input
+                            id={`edit-venue-${match.id}`}
+                            name="venue"
+                            required
+                            defaultValue={match.venue}
+                            className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                          />
+                        </label>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="submit"
+                            disabled={editBlocked}
+                            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-black text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-45"
+                          >
+                            <Save className="h-4 w-4" aria-hidden="true" />
+                            Save fixture
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingMatchId(null)}
+                            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-4 text-sm font-black text-zinc-700 transition hover:border-emerald-300 hover:text-emerald-800"
+                          >
+                            <X className="h-4 w-4" aria-hidden="true" />
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+                        <div className="min-w-0">
+                          <p className="truncate font-extrabold text-zinc-950">
+                            {home?.name ?? "Home"} vs {away?.name ?? "Away"}
+                          </p>
+                          <p className="text-sm font-semibold text-zinc-500">
+                            {formatStage(match.stage)} - {formatKickoff(match.kickoff)} -{" "}
+                            {match.venue}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <StatusPill status={match.status} />
+                          <button
+                            type="button"
+                            onClick={() => setEditingMatchId(match.id)}
+                            disabled={editBlocked}
+                            className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-zinc-300 bg-white text-zinc-700 transition hover:border-emerald-300 hover:text-emerald-800 disabled:cursor-not-allowed disabled:opacity-45"
+                            title={`Edit ${home?.name ?? "Home"} vs ${away?.name ?? "Away"}`}
+                            aria-label={`Edit ${home?.name ?? "Home"} vs ${away?.name ?? "Away"}`}
+                          >
+                            <Pencil className="h-4 w-4" aria-hidden="true" />
+                          </button>
                       <button
                         type="button"
                         onClick={() => deleteMatch(match)}
+                            disabled={editBlocked}
                         className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-red-200 bg-white text-red-600 transition hover:bg-red-50 hover:text-red-700"
                         title={`Delete ${home?.name ?? "Home"} vs ${away?.name ?? "Away"}`}
                         aria-label={`Delete ${home?.name ?? "Home"} vs ${away?.name ?? "Away"}`}
                       >
                         <Trash2 className="h-4 w-4" aria-hidden="true" />
                       </button>
-                    </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -1898,30 +2804,117 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
             <h2 className="text-2xl font-black text-zinc-950">News Posts</h2>
             <div className="mt-5 divide-y divide-zinc-100">
               {data.newsPosts.length > 0 ? (
-                data.newsPosts.map((post) => (
-                  <article key={post.id} className="grid gap-3 py-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate font-extrabold text-zinc-950">{post.title}</p>
-                        <p className="text-xs font-bold uppercase text-zinc-500">
-                          {formatKickoff(post.publishedAt)}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => deleteNewsPost(post)}
-                        className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-red-200 bg-white text-red-600 transition hover:bg-red-50 hover:text-red-700"
-                        title={`Delete ${post.title}`}
-                        aria-label={`Delete ${post.title}`}
-                      >
-                        <Trash2 className="h-4 w-4" aria-hidden="true" />
-                      </button>
-                    </div>
-                    <p className="whitespace-pre-line text-sm font-medium leading-6 text-zinc-600">
-                      {post.body}
-                    </p>
-                  </article>
-                ))
+                data.newsPosts.map((post) => {
+                  const isEditing = editingNewsPostId === post.id;
+
+                  return (
+                    <article key={post.id} className="grid gap-3 py-4">
+                      {isEditing ? (
+                        <form
+                          onSubmit={(event) => updateNewsPost(event, post)}
+                          className="grid gap-3 rounded-md border border-emerald-200 bg-emerald-50/45 p-3"
+                        >
+                          <p className="font-extrabold text-zinc-950">Edit news post</p>
+                          <label
+                            className="grid gap-2 text-sm font-bold text-zinc-700"
+                            htmlFor={`edit-news-title-${post.id}`}
+                          >
+                            Title
+                            <input
+                              id={`edit-news-title-${post.id}`}
+                              name="title"
+                              defaultValue={post.title}
+                              required
+                              className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                            />
+                          </label>
+                          <label
+                            className="grid gap-2 text-sm font-bold text-zinc-700"
+                            htmlFor={`edit-news-published-${post.id}`}
+                          >
+                            Published
+                            <input
+                              id={`edit-news-published-${post.id}`}
+                              name="publishedAt"
+                              type="datetime-local"
+                              defaultValue={toDatetimeLocalValue(post.publishedAt)}
+                              required
+                              className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                            />
+                          </label>
+                          <label
+                            className="grid gap-2 text-sm font-bold text-zinc-700"
+                            htmlFor={`edit-news-body-${post.id}`}
+                          >
+                            Body
+                            <textarea
+                              id={`edit-news-body-${post.id}`}
+                              name="body"
+                              defaultValue={post.body}
+                              required
+                              rows={8}
+                              className="min-h-36 rounded-md border border-zinc-300 bg-white px-3 py-2 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                            />
+                          </label>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="submit"
+                              disabled={editBlocked}
+                              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-black text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-45"
+                            >
+                              <Save className="h-4 w-4" aria-hidden="true" />
+                              Save news
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingNewsPostId(null)}
+                              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-4 text-sm font-black text-zinc-700 transition hover:border-emerald-300 hover:text-emerald-800"
+                            >
+                              <X className="h-4 w-4" aria-hidden="true" />
+                              Cancel
+                            </button>
+                          </div>
+                        </form>
+                      ) : (
+                        <>
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="truncate font-extrabold text-zinc-950">{post.title}</p>
+                              <p className="text-xs font-bold uppercase text-zinc-500">
+                                {formatKickoff(post.publishedAt)}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setEditingNewsPostId(post.id)}
+                                disabled={editBlocked}
+                                className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-zinc-300 bg-white text-zinc-700 transition hover:border-emerald-300 hover:text-emerald-800 disabled:cursor-not-allowed disabled:opacity-45"
+                                title={`Edit ${post.title}`}
+                                aria-label={`Edit ${post.title}`}
+                              >
+                                <Pencil className="h-4 w-4" aria-hidden="true" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => deleteNewsPost(post)}
+                                disabled={editBlocked}
+                                className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-red-200 bg-white text-red-600 transition hover:bg-red-50 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-45"
+                                title={`Delete ${post.title}`}
+                                aria-label={`Delete ${post.title}`}
+                              >
+                                <Trash2 className="h-4 w-4" aria-hidden="true" />
+                              </button>
+                            </div>
+                          </div>
+                          <p className="whitespace-pre-line text-sm font-medium leading-6 text-zinc-600">
+                            {post.body}
+                          </p>
+                        </>
+                      )}
+                    </article>
+                  );
+                })
               ) : (
                 <p className="py-4 text-sm font-semibold text-zinc-500">No news yet.</p>
               )}
@@ -2332,9 +3325,254 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                 events={selectedMatchEvents}
                 teams={data.teams}
                 players={data.players}
-                renderActions={(matchEvent) =>
-                  (
-                    <div className="flex flex-wrap gap-2">
+                renderActions={(matchEvent) => {
+                  const assistOptions = getAssistPlayerOptions(data.players, matchEvent);
+                  const isEditing = editingEventId === matchEvent.id;
+                  const eventMatch = data.matches.find((match) => match.id === matchEvent.matchId);
+                  const editEventTeamOptions = eventMatch
+                    ? [eventMatch.homeTeamId, eventMatch.awayTeamId]
+                        .map((teamId) => data.teams.find((team) => team.id === teamId))
+                        .filter((team): team is Team => Boolean(team))
+                    : data.teams;
+                  const activeEditingEventTeamId = editEventTeamOptions.some(
+                    (team) => team.id === editingEventTeamId,
+                  )
+                    ? editingEventTeamId
+                    : editEventTeamOptions.some((team) => team.id === matchEvent.teamId)
+                      ? matchEvent.teamId
+                      : editEventTeamOptions[0]?.id ?? "";
+                  const editingEventPlayers = data.players.filter(
+                    (player) => player.teamId === activeEditingEventTeamId,
+                  );
+                  const activeEditingEventPlayerId = editingEventPlayers.some(
+                    (player) => player.id === editingEventPlayerId,
+                  )
+                    ? editingEventPlayerId
+                    : editingEventPlayers.some((player) => player.id === matchEvent.playerId)
+                      ? matchEvent.playerId
+                      : editingEventPlayers[0]?.id ?? "";
+                  const editingAssistOptions =
+                    editingEventType === "goal"
+                      ? editingEventPlayers.filter(
+                          (player) => player.id !== activeEditingEventPlayerId,
+                        )
+                      : [];
+                  const activeEditingAssistPlayerId =
+                    editingAssistOptions.some(
+                      (player) => player.id === matchEvent.assistPlayerId,
+                    )
+                      ? matchEvent.assistPlayerId ?? ""
+                      : "";
+
+                  if (isEditing) {
+                    return (
+                      <form
+                        onSubmit={(event) => updateMatchEvent(event, matchEvent)}
+                        className="grid gap-3 rounded-md border border-emerald-200 bg-white p-3"
+                      >
+                        <p className="font-extrabold text-zinc-950">Edit match event</p>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <label
+                            className="grid gap-2 text-sm font-bold text-zinc-700"
+                            htmlFor={`edit-event-type-${matchEvent.id}`}
+                          >
+                            Event
+                            <select
+                              id={`edit-event-type-${matchEvent.id}`}
+                              name="type"
+                              value={editingEventType}
+                              onChange={(event) =>
+                                setEditingEventType(event.target.value as MatchEventType)
+                              }
+                              className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                            >
+                              {eventTypes.map((type) => (
+                                <option key={type} value={type}>
+                                  {type.replace("_", " ")}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label
+                            className="grid gap-2 text-sm font-bold text-zinc-700"
+                            htmlFor={`edit-event-team-${matchEvent.id}`}
+                          >
+                            Team
+                            <select
+                              id={`edit-event-team-${matchEvent.id}`}
+                              name="teamId"
+                              value={activeEditingEventTeamId}
+                              onChange={(event) => {
+                                setEditingEventTeamId(event.target.value);
+                                setEditingEventPlayerId("");
+                              }}
+                              required
+                              className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                            >
+                              {editEventTeamOptions.map((team) => (
+                                <option key={team.id} value={team.id}>
+                                  {team.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <label
+                            className="grid gap-2 text-sm font-bold text-zinc-700"
+                            htmlFor={`edit-event-player-${matchEvent.id}`}
+                          >
+                            Player
+                            <select
+                              id={`edit-event-player-${matchEvent.id}`}
+                              name="playerId"
+                              value={activeEditingEventPlayerId}
+                              onChange={(event) => setEditingEventPlayerId(event.target.value)}
+                              required
+                              className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                            >
+                              {editingEventPlayers.length > 0 ? (
+                                editingEventPlayers.map((player) => (
+                                  <option key={player.id} value={player.id}>
+                                    #{player.jerseyNumber} {player.name}
+                                  </option>
+                                ))
+                              ) : (
+                                <option value="">No players</option>
+                              )}
+                            </select>
+                          </label>
+                          <label
+                            className="grid gap-2 text-sm font-bold text-zinc-700"
+                            htmlFor={`edit-assist-player-${matchEvent.id}`}
+                          >
+                            Assist
+                            <select
+                              key={`${matchEvent.id}-${activeEditingEventTeamId}-${activeEditingEventPlayerId}-${editingEventType}`}
+                              id={`edit-assist-player-${matchEvent.id}`}
+                              name="assistPlayerId"
+                              defaultValue={activeEditingAssistPlayerId}
+                              disabled={
+                                editingEventType !== "goal" || editingAssistOptions.length === 0
+                              }
+                              className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-400"
+                            >
+                              <option value="">No assist</option>
+                              {editingAssistOptions.map((player) => (
+                                <option key={player.id} value={player.id}>
+                                  #{player.jerseyNumber} {player.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-3">
+                          <label
+                            className="grid gap-2 text-sm font-bold text-zinc-700"
+                            htmlFor={`edit-event-half-${matchEvent.id}`}
+                          >
+                            Half
+                            <select
+                              id={`edit-event-half-${matchEvent.id}`}
+                              name="half"
+                              defaultValue={matchEvent.half}
+                              className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                            >
+                              <option value="1">1st half</option>
+                              <option value="2">2nd half</option>
+                            </select>
+                          </label>
+                          <NumberInput
+                            id={`edit-event-minute-${matchEvent.id}`}
+                            name="minute"
+                            label="Minute"
+                            min={1}
+                            max={MATCH_DURATION_MINUTES}
+                            defaultValue={matchEvent.minute}
+                          />
+                          <NumberInput
+                            id={`edit-event-added-time-${matchEvent.id}`}
+                            name="addedTime"
+                            label="Added"
+                            min={0}
+                            max={20}
+                            required={false}
+                            defaultValue={matchEvent.addedTime}
+                          />
+                        </div>
+                        <label className="flex min-h-11 items-center gap-3 rounded-md border border-zinc-300 bg-white px-3 text-sm font-bold text-zinc-700">
+                          <input
+                            type="checkbox"
+                            name="isDisallowed"
+                            defaultChecked={Boolean(matchEvent.isDisallowed)}
+                            disabled={!isScoreEventType(editingEventType)}
+                            className="h-4 w-4 rounded border-zinc-300 text-emerald-700 focus:ring-emerald-500 disabled:cursor-not-allowed"
+                          />
+                          Disallowed
+                        </label>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="submit"
+                            disabled={editBlocked || editingEventPlayers.length === 0}
+                            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-black text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-45"
+                          >
+                            <Save className="h-4 w-4" aria-hidden="true" />
+                            Save event
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingEventId(null)}
+                            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-4 text-sm font-black text-zinc-700 transition hover:border-emerald-300 hover:text-emerald-800"
+                          >
+                            <X className="h-4 w-4" aria-hidden="true" />
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
+                    );
+                  }
+
+                  return (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => startEditingMatchEvent(matchEvent)}
+                        disabled={editBlocked}
+                        className="inline-flex min-h-9 items-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-xs font-black text-zinc-700 transition hover:border-emerald-300 hover:text-emerald-800 disabled:cursor-not-allowed disabled:opacity-45"
+                      >
+                        <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+                        Edit
+                      </button>
+                      {matchEvent.type === "goal" ? (
+                        <form
+                          key={`assist-${matchEvent.id}-${matchEvent.assistPlayerId ?? "none"}`}
+                          onSubmit={(event) => updateEventAssist(event, matchEvent)}
+                          className="flex min-w-0 flex-wrap items-center gap-2"
+                        >
+                          <select
+                            name="assistPlayerId"
+                            defaultValue={matchEvent.assistPlayerId ?? ""}
+                            disabled={editBlocked || assistOptions.length === 0}
+                            aria-label="Assist player"
+                            className="min-h-9 min-w-44 rounded-md border border-zinc-300 bg-white px-2 text-xs font-bold text-zinc-700 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-400"
+                          >
+                            <option value="">No assist</option>
+                            {assistOptions.map((player) => (
+                              <option key={player.id} value={player.id}>
+                                #{player.jerseyNumber} {player.name}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="submit"
+                            disabled={editBlocked || assistOptions.length === 0}
+                            className="inline-flex min-h-9 items-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-xs font-black text-zinc-700 transition hover:border-emerald-300 hover:text-emerald-800 disabled:cursor-not-allowed disabled:opacity-45"
+                          >
+                            <Save className="h-3.5 w-3.5" aria-hidden="true" />
+                            Save assist
+                          </button>
+                        </form>
+                      ) : null}
                       {isScoreEventType(matchEvent.type) ? (
                         <button
                           type="button"
@@ -2362,8 +3600,8 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                         Delete
                       </button>
                     </div>
-                  )
-                }
+                  );
+                }}
               />
             </div>
           </section>

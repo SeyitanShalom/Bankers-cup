@@ -74,3 +74,150 @@ button {
   background: #f5c84c;
   color: #18181b;
 }
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes drop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes hero-drift {
+  from {
+    transform: scale(1.02) translate3d(0, 0, 0);
+  }
+  to {
+    transform: scale(1.08) translate3d(-1.5%, 0.8%, 0);
+  }
+}
+
+@keyframes soft-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
+
+@keyframes score-glow {
+  0%,
+  100% {
+    box-shadow: 0 1px 2px rgb(24 24 27 / 0.08);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgb(251 191 36 / 0.18), 0 12px 26px rgb(24 24 27 / 0.14);
+  }
+}
+
+@keyframes sheen {
+  from {
+    transform: translateX(-120%);
+  }
+  to {
+    transform: translateX(120%);
+  }
+}
+
+.animate-rise-in {
+  animation: rise-in 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.animate-drop-in {
+  animation: drop-in 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.motion-delay-1 {
+  animation-delay: 90ms;
+}
+
+.motion-delay-2 {
+  animation-delay: 170ms;
+}
+
+.motion-delay-3 {
+  animation-delay: 250ms;
+}
+
+.motion-card {
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    background-color 180ms ease;
+}
+
+.motion-card:hover,
+.motion-card:focus-within {
+  border-color: rgb(16 185 129 / 0.42);
+  box-shadow: 0 16px 34px rgb(24 24 27 / 0.1);
+  transform: translateY(-3px);
+}
+
+.hero-drift {
+  animation: hero-drift 18s ease-in-out infinite alternate;
+}
+
+.live-pulse-dot {
+  animation: soft-pulse 2.0s ease-in-out infinite;
+}
+
+.score-glow {
+  animation: score-glow 2.4s ease-in-out infinite;
+}
+
+.sheen {
+  overflow: hidden;
+  position: relative;
+}
+
+.sheen::after {
+  animation: sheen 4.5s ease-in-out infinite;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.26), transparent);
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+  transform: translateX(-120%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 1ms !important;
+  }
+
+  .hero-drift,
+  .live-pulse-dot,
+  .score-glow,
+  .sheen::after {
+    animation: none !important;
+  }
+
+  .motion-card:hover,
+  .motion-card:focus-within {
+    transform: none;
+  }
+}

@@ -19,7 +19,11 @@ export function MatchCard({ match, teams }: MatchCardProps) {
   if (!home || !away) return null;
 
   return (
-    <article className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+    <article
+      className={`animate-rise-in motion-card rounded-lg border bg-white p-4 shadow-sm ${
+        match.status === "live" ? "sheen border-amber-300" : "border-zinc-200"
+      }`}
+    >
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="text-xs font-black uppercase tracking-wide text-emerald-700">
@@ -48,10 +52,10 @@ export function MatchCard({ match, teams }: MatchCardProps) {
         <p className="text-sm font-medium text-zinc-500">{match.venue}</p>
         <Link
           href={`/matches/${match.id}`}
-          className="inline-flex items-center gap-1 text-sm font-black text-emerald-700 hover:text-emerald-900"
+          className="group inline-flex items-center gap-1 text-sm font-black text-emerald-700 transition hover:text-emerald-900"
         >
           Details
-          <ArrowRight className="h-4 w-4" aria-hidden="true" />
+          <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" aria-hidden="true" />
         </Link>
       </div>
     </article>

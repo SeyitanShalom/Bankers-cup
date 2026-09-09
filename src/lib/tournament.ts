@@ -14,11 +14,24 @@ export type MatchSide = "home" | "away";
 
 export const MATCH_DURATION_MINUTES = 60;
 export const HALF_DURATION_MINUTES = 30;
+export const LEAGUE_PHASE_MATCHES_PER_TEAM = 4;
 export const QUALIFICATION_PLACES = 8;
+export const QUARTER_FINAL_SEED_PAIRS = [
+  [1, 8],
+  [4, 5],
+  [2, 7],
+  [3, 6],
+] as const;
+
+export type KnockoutSeedSlot = {
+  seed: number;
+  row: StandingRow | null;
+  status: "confirmed" | "clinched" | "pending";
+};
 
 export function formatStage(stage: MatchStage) {
   const labels: Record<MatchStage, string> = {
-    group: "Group",
+    group: "League phase",
     quarter_final: "Quarter-final",
     semi_final: "Semi-final",
     final: "Final",
@@ -184,6 +197,146 @@ export function calculateStandings(teams: Team[], matches: Match[]): StandingRow
     }));
 }
 
+function getLeaguePhaseMatches(matches: Match[]) {
+  return matches.filter((match) => match.stage === "group");
+}
+
+function getRemainingLeagueMatches(matches: Match[]) {
+  return matches.filter(
+    (match) =>
+      match.stage === "group" &&
+      (match.status !== "completed" || match.homeScore === null || match.awayScore === null),
+  );
+}
+
+function getRemainingLeagueMatchCounts(matches: Match[]) {
+  const counts = new Map<string, number>();
+
+  getRemainingLeagueMatches(matches).forEach((match) => {
+    counts.set(match.homeTeamId, (counts.get(match.homeTeamId) ?? 0) + 1);
+    counts.set(match.awayTeamId, (counts.get(match.awayTeamId) ?? 0) + 1);
+  });
+
+  return counts;
+}
+
+function getLeagueScheduleMatchCounts(matches: Match[]) {
+  const counts = new Map<string, number>();
+
+  getLeaguePhaseMatches(matches).forEach((match) => {
+    counts.set(match.homeTeamId, (counts.get(match.homeTeamId) ?? 0) + 1);
+    counts.set(match.awayTeamId, (counts.get(match.awayTeamId) ?? 0) + 1);
+  });
+
+  return counts;
+}
+
+function hasFullLeagueSchedule(
+  row: StandingRow,
+  leagueScheduleMatchCounts: Map<string, number>,
+) {
+  return (leagueScheduleMatchCounts.get(row.team.id) ?? 0) === LEAGUE_PHASE_MATCHES_PER_TEAM;
+}
+
+function isLeagueScheduleReady(
+  standings: StandingRow[],
+  leagueScheduleMatchCounts: Map<string, number>,
+) {
+  return (
+    standings.length > 0 &&
+    standings.every((row) => hasFullLeagueSchedule(row, leagueScheduleMatchCounts))
+  );
+}
+
+export function isLeaguePhaseComplete(standings: StandingRow[], matches: Match[]) {
+  const leagueScheduleMatchCounts = getLeagueScheduleMatchCounts(matches);
+
+  if (!isLeagueScheduleReady(standings, leagueScheduleMatchCounts)) {
+    return false;
+  }
+
+  return standings.every((row) => row.played === LEAGUE_PHASE_MATCHES_PER_TEAM);
+}
+
+function isSeedClinched(
+  row: StandingRow,
+  standings: StandingRow[],
+  remainingMatchCounts: Map<string, number>,
+  leagueScheduleMatchCounts: Map<string, number>,
+) {
+  const currentIndex = standings.findIndex((standing) => standing.team.id === row.team.id);
+
+  if (currentIndex === -1 || !hasFullLeagueSchedule(row, leagueScheduleMatchCounts)) {
+    return false;
+  }
+
+  const teamRemainingMatches = remainingMatchCounts.get(row.team.id) ?? 0;
+  const maximumPoints = row.points + teamRemainingMatches * 3;
+  const teamsAbove = standings.slice(0, currentIndex);
+  const teamsBelow = standings.slice(currentIndex + 1);
+  const cannotMoveUp = teamsAbove.every((other) => {
+    const otherRemainingMatches = remainingMatchCounts.get(other.team.id) ?? 0;
+
+    if (other.points > maximumPoints) {
+      return true;
+    }
+
+    return (
+      teamRemainingMatches === 0 &&
+      otherRemainingMatches === 0 &&
+      other.points === row.points
+    );
+  });
+  const cannotMoveDown = teamsBelow.every((other) => {
+    const otherRemainingMatches = remainingMatchCounts.get(other.team.id) ?? 0;
+    const otherMaximumPoints = other.points + otherRemainingMatches * 3;
+
+    if (otherMaximumPoints < row.points) {
+      return true;
+    }
+
+    return (
+      teamRemainingMatches === 0 &&
+      otherRemainingMatches === 0 &&
+      other.points === row.points
+    );
+  });
+
+  return cannotMoveUp && cannotMoveDown;
+}
+
+export function getKnockoutSeedSlots(
+  standings: StandingRow[],
+  matches: Match[],
+): KnockoutSeedSlot[] {
+  const leaguePhaseComplete = isLeaguePhaseComplete(standings, matches);
+  const remainingMatchCounts = getRemainingLeagueMatchCounts(matches);
+  const leagueScheduleMatchCounts = getLeagueScheduleMatchCounts(matches);
+  const leagueScheduleReady = isLeagueScheduleReady(standings, leagueScheduleMatchCounts);
+
+  return Array.from({ length: QUALIFICATION_PLACES }, (_, index) => {
+    const seed = index + 1;
+    const row = standings[index] ?? null;
+
+    if (!row) {
+      return { seed, row: null, status: "pending" };
+    }
+
+    if (leaguePhaseComplete) {
+      return { seed, row, status: "confirmed" };
+    }
+
+    if (
+      leagueScheduleReady &&
+      isSeedClinched(row, standings, remainingMatchCounts, leagueScheduleMatchCounts)
+    ) {
+      return { seed, row, status: "clinched" };
+    }
+
+    return { seed, row: null, status: "pending" };
+  });
+}
+
 export function calculatePlayerStats(data: CompetitionData): PlayerStatRow[] {
   const teamById = new Map(data.teams.map((team) => [team.id, team]));
   const stats = new Map<string, PlayerStatRow>();
@@ -302,15 +455,4 @@ export function getMatchEvents(events: MatchEvent[], matchId: string) {
 
       return (a.createdAt ?? a.id).localeCompare(b.createdAt ?? b.id);
     });
-}
-
-export function getQualificationPairings(standings: StandingRow[]) {
-  const qualifiers = standings.slice(0, QUALIFICATION_PLACES);
-
-  return [
-    [qualifiers[0], qualifiers[7]],
-    [qualifiers[3], qualifiers[4]],
-    [qualifiers[1], qualifiers[6]],
-    [qualifiers[2], qualifiers[5]],
-  ].filter((pair) => pair[0] && pair[1]);
 }
