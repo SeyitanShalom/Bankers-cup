@@ -41,6 +41,18 @@ type SupabaseMatchEventPayload = {
 
 const emptyMatchEvents: MatchEvent[] = [];
 
+type MatchListener = (match: Match) => void;
+
+type MatchStore = {
+  match: Match;
+  configured: boolean;
+  listeners: Set<MatchListener>;
+  subscriberCount: number;
+  cleanup: (() => void) | null;
+};
+
+const matchStores = new Map<string, MatchStore>();
+
 function mergePayloadMatch(match: Match, payload: SupabaseMatchPayload): Match {
   return {
     ...match,
@@ -120,57 +132,121 @@ function upsertEvent(events: MatchEvent[], nextEvent: MatchEvent) {
   return events.map((event) => (event.id === nextEvent.id ? nextEvent : event));
 }
 
+function setMatchStoreValue(store: MatchStore, match: Match) {
+  store.match = match;
+  store.listeners.forEach((listener) => listener(match));
+}
+
+function createMatchStore(match: Match, configured: boolean): MatchStore {
+  const store: MatchStore = {
+    match,
+    configured,
+    listeners: new Set(),
+    subscriberCount: 0,
+    cleanup: null,
+  };
+
+  matchStores.set(match.id, store);
+  return store;
+}
+
+function getMatchStore(match: Match, configured: boolean) {
+  const existingStore = matchStores.get(match.id);
+
+  if (!existingStore) {
+    return createMatchStore(match, configured);
+  }
+
+  if (existingStore.configured !== configured) {
+    existingStore.cleanup?.();
+    matchStores.delete(match.id);
+    return createMatchStore(match, configured);
+  }
+
+  return existingStore;
+}
+
+function startMatchStore(store: MatchStore) {
+  let active = true;
+
+  const refreshLiveMatch = async () => {
+    try {
+      const nextMatch = await fetchLiveMatch(store.match.id);
+      if (active && nextMatch) setMatchStoreValue(store, nextMatch);
+    } catch {
+      // Keep the latest rendered snapshot if a background refresh misses.
+    }
+  };
+
+  const timeout = window.setTimeout(refreshLiveMatch, 0);
+  const interval = window.setInterval(refreshLiveMatch, 15000);
+  const supabase = store.configured ? createBrowserSupabaseClient() : null;
+  const channelName = `match-row-${store.match.id}-${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2)}`;
+  const channel = supabase
+    ?.channel(channelName)
+    .on(
+      "postgres_changes",
+      {
+        event: "UPDATE",
+        schema: "public",
+        table: "matches",
+        filter: `id=eq.${store.match.id}`,
+      },
+      (payload) => {
+        setMatchStoreValue(
+          store,
+          mergePayloadMatch(store.match, payload.new as SupabaseMatchPayload),
+        );
+      },
+    )
+    .subscribe();
+
+  store.cleanup = () => {
+    active = false;
+    window.clearTimeout(timeout);
+    window.clearInterval(interval);
+    if (channel) {
+      void supabase?.removeChannel(channel);
+    }
+    store.cleanup = null;
+  };
+}
+
+function subscribeToMatchStore(
+  match: Match,
+  configured: boolean,
+  listener: MatchListener,
+) {
+  const store = getMatchStore(match, configured);
+
+  store.listeners.add(listener);
+  store.subscriberCount += 1;
+  listener(store.match);
+
+  if (store.subscriberCount === 1) {
+    startMatchStore(store);
+  }
+
+  return () => {
+    store.listeners.delete(listener);
+    store.subscriberCount -= 1;
+
+    if (store.subscriberCount <= 0) {
+      store.cleanup?.();
+      matchStores.delete(match.id);
+    }
+  };
+}
+
 export function useLiveMatch(match: Match) {
   const [liveMatch, setLiveMatch] = useState(match);
   const configured = hasSupabaseConfig();
 
   useEffect(() => {
-    let active = true;
-    const refreshLiveMatch = async () => {
-      const nextMatch = await fetchLiveMatch(match.id);
-      if (active && nextMatch) setLiveMatch(nextMatch);
-    };
-    const timeout = window.setTimeout(refreshLiveMatch, 0);
-    const interval = window.setInterval(refreshLiveMatch, 15000);
-    const supabase = configured ? createBrowserSupabaseClient() : null;
-
-    if (!supabase) {
-      return () => {
-        active = false;
-        window.clearTimeout(timeout);
-        window.clearInterval(interval);
-      };
-    }
-
-    const channelName = `match-row-${match.id}-${Date.now()}-${Math.random()
-      .toString(36)
-      .slice(2)}`;
-
-    const channel = supabase
-      .channel(channelName)
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "matches",
-          filter: `id=eq.${match.id}`,
-        },
-        (payload) => {
-          setLiveMatch((current) =>
-            mergePayloadMatch(current, payload.new as SupabaseMatchPayload),
-          );
-        },
-      )
-      .subscribe();
-
-    return () => {
-      active = false;
-      window.clearTimeout(timeout);
-      window.clearInterval(interval);
-      supabase.removeChannel(channel);
-    };
-  }, [configured, match.id]);
+    return subscribeToMatchStore(match, configured, setLiveMatch);
+  }, [configured, match]);
 
   return liveMatch;
 }

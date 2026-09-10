@@ -24,9 +24,18 @@ function isLocalWriteAllowed(request: Request) {
 }
 
 export async function GET() {
-  const data = await getCompetitionData();
+  try {
+    const data = await getCompetitionData();
 
-  return Response.json(data);
+    return Response.json(data);
+  } catch (error) {
+    console.error("Unable to load competition data", error);
+
+    return Response.json(
+      { error: "Competition data is temporarily unavailable." },
+      { status: 503 },
+    );
+  }
 }
 
 export async function POST(request: Request) {

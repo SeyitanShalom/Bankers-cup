@@ -145,6 +145,188 @@ exception
   when undefined_object then null;
 end $$;
 
+create or replace function public.validate_match_integrity()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+declare
+  home_keeper_team_id uuid;
+  away_keeper_team_id uuid;
+begin
+  if new.winner_team_id is not null and
+    new.winner_team_id not in (new.home_team_id, new.away_team_id)
+  then
+    raise exception 'Winner must be one of the match teams';
+  end if;
+
+  if (new.home_penalty_score is null) <> (new.away_penalty_score is null) then
+    raise exception 'Enter both penalty scores or leave both blank';
+  end if;
+
+  if new.home_penalty_score is not null and new.away_penalty_score is not null then
+    if new.stage = 'group' then
+      raise exception 'Penalty scores only apply to knockout matches';
+    end if;
+
+    if new.home_penalty_score = new.away_penalty_score then
+      raise exception 'Penalty score needs a winner';
+    end if;
+
+    if new.home_score is not null and
+      new.away_score is not null and
+      new.home_score <> new.away_score
+    then
+      raise exception 'Penalty scores only apply when the knockout score is tied';
+    end if;
+  end if;
+
+  if new.home_clean_sheet_goalkeeper_id is not null then
+    if new.status <> 'completed' or new.away_score is distinct from 0 then
+      raise exception 'Home clean sheet goalkeeper requires a completed home clean sheet';
+    end if;
+
+    select team_id
+    into home_keeper_team_id
+    from public.players
+    where id = new.home_clean_sheet_goalkeeper_id;
+
+    if home_keeper_team_id is distinct from new.home_team_id then
+      raise exception 'Home clean sheet goalkeeper must belong to the home team';
+    end if;
+  end if;
+
+  if new.away_clean_sheet_goalkeeper_id is not null then
+    if new.status <> 'completed' or new.home_score is distinct from 0 then
+      raise exception 'Away clean sheet goalkeeper requires a completed away clean sheet';
+    end if;
+
+    select team_id
+    into away_keeper_team_id
+    from public.players
+    where id = new.away_clean_sheet_goalkeeper_id;
+
+    if away_keeper_team_id is distinct from new.away_team_id then
+      raise exception 'Away clean sheet goalkeeper must belong to the away team';
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists validate_match_integrity_trigger on public.matches;
+create trigger validate_match_integrity_trigger
+before insert or update on public.matches
+for each row
+execute function public.validate_match_integrity();
+
+create or replace function public.validate_match_event_integrity()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+declare
+  match_home_team_id uuid;
+  match_away_team_id uuid;
+  event_player_team_id uuid;
+  assist_player_team_id uuid;
+begin
+  select home_team_id, away_team_id
+  into match_home_team_id, match_away_team_id
+  from public.matches
+  where id = new.match_id;
+
+  if match_home_team_id is null then
+    raise exception 'Selected match was not found';
+  end if;
+
+  if new.team_id not in (match_home_team_id, match_away_team_id) then
+    raise exception 'Choose one of the teams playing this match';
+  end if;
+
+  select team_id
+  into event_player_team_id
+  from public.players
+  where id = new.player_id;
+
+  if event_player_team_id is distinct from new.team_id then
+    raise exception 'Choose a player from the selected team';
+  end if;
+
+  if new.event_type <> 'goal' and new.assist_player_id is not null then
+    raise exception 'Assists can only be added to goal events';
+  end if;
+
+  if new.assist_player_id is not null then
+    select team_id
+    into assist_player_team_id
+    from public.players
+    where id = new.assist_player_id;
+
+    if assist_player_team_id is distinct from new.team_id then
+      raise exception 'Choose an assist from the selected team';
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists validate_match_event_integrity_trigger on public.match_events;
+create trigger validate_match_event_integrity_trigger
+before insert or update on public.match_events
+for each row
+execute function public.validate_match_event_integrity();
+
+create or replace function public.validate_penalty_event_integrity()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+declare
+  match_stage text;
+  match_home_team_id uuid;
+  match_away_team_id uuid;
+  penalty_player_team_id uuid;
+begin
+  select stage, home_team_id, away_team_id
+  into match_stage, match_home_team_id, match_away_team_id
+  from public.matches
+  where id = new.match_id;
+
+  if match_stage is null then
+    raise exception 'Selected match was not found';
+  end if;
+
+  if match_stage = 'group' then
+    raise exception 'Penalty events only apply to knockout matches';
+  end if;
+
+  if new.team_id not in (match_home_team_id, match_away_team_id) then
+    raise exception 'Choose one of the teams playing this match';
+  end if;
+
+  select team_id
+  into penalty_player_team_id
+  from public.players
+  where id = new.player_id;
+
+  if penalty_player_team_id is distinct from new.team_id then
+    raise exception 'Choose a player from the selected team';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists validate_penalty_event_integrity_trigger
+on public.penalty_shootout_events;
+create trigger validate_penalty_event_integrity_trigger
+before insert or update on public.penalty_shootout_events
+for each row
+execute function public.validate_penalty_event_integrity();
+
 alter table public.admin_users enable row level security;
 alter table public.teams enable row level security;
 alter table public.players enable row level security;
@@ -237,7 +419,7 @@ values (
   'team-logos',
   true,
   5242880,
-  array['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml']
+  array['image/png', 'image/jpeg', 'image/webp']
 )
 on conflict (id) do update
 set public = excluded.public,

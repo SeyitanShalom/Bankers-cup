@@ -78,6 +78,14 @@ type Tab = "teams" | "players" | "matches" | "events" | "news";
 const positions: PlayerPosition[] = ["Goalkeeper", "Defender", "Midfielder", "Forward"];
 const stages: MatchStage[] = ["group", "quarter_final", "semi_final", "final", "third_place"];
 const eventTypes: MatchEventType[] = ["goal", "own_goal", "yellow_card", "red_card"];
+const logoAccept = "image/png,image/jpeg,image/webp";
+const logoMaxBytes = 5 * 1024 * 1024;
+const logoExtensions: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+};
+const allowedLogoMimeTypes = new Set(Object.keys(logoExtensions));
 
 type SupabaseMatchEventRow = {
   id: string;
@@ -151,6 +159,26 @@ function readFileAsDataUrl(file: File) {
     reader.onerror = () => reject(new Error("Unable to read logo file"));
     reader.readAsDataURL(file);
   });
+}
+
+function validateLogoFile(file: File | null) {
+  if (!file || file.size === 0) {
+    return null;
+  }
+
+  if (file.size > logoMaxBytes) {
+    throw new Error("Team logo must be 5 MB or smaller");
+  }
+
+  if (!allowedLogoMimeTypes.has(file.type)) {
+    throw new Error("Team logo must be a PNG, JPEG, or WebP image");
+  }
+
+  return file;
+}
+
+function getLogoExtension(file: File) {
+  return logoExtensions[file.type] ?? "png";
 }
 
 function NumberInput({
@@ -703,10 +731,11 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
 
     try {
       let logoUrl: string | null = null;
+      const validLogoFile = validateLogoFile(logoFile);
 
       if (localMode) {
-        if (logoFile && logoFile.size > 0) {
-          logoUrl = await readFileAsDataUrl(logoFile);
+        if (validLogoFile) {
+          logoUrl = await readFileAsDataUrl(validLogoFile);
         }
 
         await saveLocalAndSync({ action: "addTeam", name, logoUrl }, `${name} added locally`);
@@ -717,11 +746,11 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       const db = getWritableSupabase();
       if (!db) return;
 
-      if (logoFile && logoFile.size > 0) {
-        const extension = logoFile.name.split(".").pop() ?? "png";
-        const originalName = slugify(logoFile.name.replace(/\.[^.]+$/, "")) || "logo";
-        const path = `${slugify(name)}-${originalName}-${logoFile.size}-${logoFile.lastModified}.${extension}`;
-        const upload = await db.storage.from("team-logos").upload(path, logoFile, {
+      if (validLogoFile) {
+        const extension = getLogoExtension(validLogoFile);
+        const originalName = slugify(validLogoFile.name.replace(/\.[^.]+$/, "")) || "logo";
+        const path = `${slugify(name)}-${originalName}-${validLogoFile.size}-${validLogoFile.lastModified}.${extension}`;
+        const upload = await db.storage.from("team-logos").upload(path, validLogoFile, {
           upsert: true,
         });
 
@@ -764,10 +793,11 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
 
     try {
       let logoUrl: string | null | undefined;
+      const validLogoFile = validateLogoFile(logoFile);
 
       if (localMode) {
-        if (logoFile && logoFile.size > 0) {
-          logoUrl = await readFileAsDataUrl(logoFile);
+        if (validLogoFile) {
+          logoUrl = await readFileAsDataUrl(validLogoFile);
         }
 
         const mutation: LocalCompetitionMutation = {
@@ -788,10 +818,10 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       const db = getWritableSupabase();
       if (!db) return;
 
-      if (logoFile && logoFile.size > 0) {
-        const extension = logoFile.name.split(".").pop() ?? "png";
+      if (validLogoFile) {
+        const extension = getLogoExtension(validLogoFile);
         const path = `${slugify(name)}-${team.id}.${extension}`;
-        const upload = await db.storage.from("team-logos").upload(path, logoFile, {
+        const upload = await db.storage.from("team-logos").upload(path, validLogoFile, {
           upsert: true,
         });
 
@@ -1436,12 +1466,23 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
     }
 
     const matchForEvent = data.matches.find((match) => match.id === matchId);
+    const player = data.players.find((item) => item.id === playerId);
     const assistPlayer = assistPlayerId
       ? data.players.find((player) => player.id === assistPlayerId)
       : null;
 
+    if (!eventTypes.includes(type)) {
+      setMessage("Choose a valid match event type");
+      return;
+    }
+
     if (!matchForEvent) {
       setMessage("Selected match was not found");
+      return;
+    }
+
+    if (!player) {
+      setMessage("Selected player was not found");
       return;
     }
 
@@ -1450,8 +1491,23 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       return;
     }
 
+    if (player.teamId !== teamId) {
+      setMessage("Choose a player from the selected team");
+      return;
+    }
+
+    if (half !== 1 && half !== 2) {
+      setMessage("Choose a valid match half");
+      return;
+    }
+
     if (minute < 1 || minute > MATCH_DURATION_MINUTES) {
       setMessage("Event minute must be between 1 and 60");
+      return;
+    }
+
+    if (!Number.isInteger(addedTime) || addedTime < 0 || addedTime > 20) {
+      setMessage("Added time must be between 0 and 20");
       return;
     }
 
@@ -2180,7 +2236,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                   id="team-logo"
                   name="logo"
                   type="file"
-                  accept="image/*"
+                  accept={logoAccept}
                   className="rounded-md border border-dashed border-zinc-300 bg-zinc-50 p-3 text-sm text-zinc-600 file:mr-3 file:rounded-md file:border-0 file:bg-zinc-950 file:px-3 file:py-2 file:text-sm file:font-bold file:text-white"
                 />
               </label>
@@ -2232,7 +2288,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                             id={`edit-team-logo-${team.id}`}
                             name="logo"
                             type="file"
-                            accept="image/*"
+                            accept={logoAccept}
                             className="rounded-md border border-dashed border-zinc-300 bg-white p-3 text-sm text-zinc-600 file:mr-3 file:rounded-md file:border-0 file:bg-zinc-950 file:px-3 file:py-2 file:text-sm file:font-bold file:text-white"
                           />
                         </label>
