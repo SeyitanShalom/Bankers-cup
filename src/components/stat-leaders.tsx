@@ -54,7 +54,7 @@ export function CleanSheetLeaders({ rows }: { rows: CleanSheetRow[] }) {
 
   return (
     <section className="animate-rise-in motion-card rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
-      <h2 className="text-lg font-black text-zinc-950">Goalkeeper Clean Sheets</h2>
+      <h2 className="text-lg font-black text-zinc-950">Clean Sheets</h2>
       <div className="mt-4 space-y-3">
         {leaders.length > 0 ? (
           leaders.map((row, index) => (

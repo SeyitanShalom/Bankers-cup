@@ -18,10 +18,7 @@ create table if not exists public.players (
   id uuid primary key default gen_random_uuid(),
   team_id uuid not null references public.teams(id) on delete cascade,
   name text not null,
-  position text not null check (position in ('Goalkeeper', 'Defender', 'Midfielder', 'Forward')),
-  jersey_number integer not null check (jersey_number between 1 and 99),
-  created_at timestamptz not null default now(),
-  unique (team_id, jersey_number)
+  created_at timestamptz not null default now()
 );
 
 create table if not exists public.matches (
@@ -108,6 +105,10 @@ $$;
 
 grant execute on function public.is_admin() to authenticated;
 
+alter table if exists public.players
+  drop column if exists position,
+  drop column if exists jersey_number;
+
 alter table if exists public.matches
   add column if not exists timer_phase text not null default 'not_started'
     check (timer_phase in ('not_started', 'first_half', 'half_time', 'second_half', 'full_time', 'penalties')),
@@ -183,7 +184,7 @@ begin
 
   if new.home_clean_sheet_goalkeeper_id is not null then
     if new.status <> 'completed' or new.away_score is distinct from 0 then
-      raise exception 'Home clean sheet goalkeeper requires a completed home clean sheet';
+      raise exception 'Home clean sheet credit requires a completed home clean sheet';
     end if;
 
     select team_id
@@ -192,13 +193,13 @@ begin
     where id = new.home_clean_sheet_goalkeeper_id;
 
     if home_keeper_team_id is distinct from new.home_team_id then
-      raise exception 'Home clean sheet goalkeeper must belong to the home team';
+      raise exception 'Home clean sheet player must belong to the home team';
     end if;
   end if;
 
   if new.away_clean_sheet_goalkeeper_id is not null then
     if new.status <> 'completed' or new.home_score is distinct from 0 then
-      raise exception 'Away clean sheet goalkeeper requires a completed away clean sheet';
+      raise exception 'Away clean sheet credit requires a completed away clean sheet';
     end if;
 
     select team_id
@@ -207,7 +208,7 @@ begin
     where id = new.away_clean_sheet_goalkeeper_id;
 
     if away_keeper_team_id is distinct from new.away_team_id then
-      raise exception 'Away clean sheet goalkeeper must belong to the away team';
+      raise exception 'Away clean sheet player must belong to the away team';
     end if;
   end if;
 

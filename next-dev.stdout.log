@@ -1,0 +1,16 @@
+
+> bankers-cup@0.1.0 dev
+> next dev --port 3000
+
+▲ Next.js 16.3.4 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://10.215.235.194:3000
+- Environments: .env
+✓ Ready in 1994ms
+✓ Running next.config.ts took 116ms
+Creating turbopack project {
+  dir: 'C:\\Users\\user\\Documents\\Bankers Cup Website\\bankers-cup',
+  testMode: true
+}
+
+ GET /admin 200 in 3.2s (next.js: 743ms, application-code: 2.4s)

@@ -13,7 +13,6 @@ import type {
   PenaltyOutcome,
   PenaltyShootoutEvent,
   Player,
-  PlayerPosition,
   Team,
 } from "./types";
 
@@ -28,8 +27,6 @@ type PlayerRow = {
   id: string;
   team_id: string;
   name: string;
-  position: PlayerPosition;
-  jersey_number: number;
   created_at: string;
 };
 
@@ -106,8 +103,6 @@ function mapPlayer(row: PlayerRow): Player {
     id: row.id,
     teamId: row.team_id,
     name: row.name,
-    position: row.position,
-    jerseyNumber: row.jersey_number,
     createdAt: row.created_at,
   };
 }
@@ -225,7 +220,7 @@ export async function getCompetitionData(): Promise<CompetitionData> {
   const [teamsResult, playersResult, matchesResult, eventsResult, penaltiesResult, newsResult] =
     await Promise.all([
       supabase.from("teams").select("*").order("name"),
-      supabase.from("players").select("*").order("jersey_number"),
+      supabase.from("players").select("*").order("name"),
       supabase.from("matches").select("*").order("kickoff"),
       supabase.from("match_events").select("*"),
       supabase.from("penalty_shootout_events").select("*").order("kick_number"),

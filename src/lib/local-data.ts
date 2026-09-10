@@ -6,7 +6,6 @@ import { getMatchOutcomeFromEvents } from "./match-outcome";
 import {
   calculateMatchScoreFromEvents,
   getCleanSheetGoalkeeperId,
-  getTeamGoalkeepers,
   isCleanSheetSide,
   isKnockoutStage,
   MATCH_DURATION_MINUTES,
@@ -17,7 +16,6 @@ import type {
   Match,
   MatchEventType,
   MatchStage,
-  PlayerPosition,
 } from "./types";
 
 type AddTeamMutation = {
@@ -37,8 +35,6 @@ type AddPlayerMutation = {
   action: "addPlayer";
   name: string;
   teamId: string;
-  position: PlayerPosition;
-  jerseyNumber: number;
 };
 
 type UpdatePlayerMutation = {
@@ -46,8 +42,6 @@ type UpdatePlayerMutation = {
   playerId: string;
   name: string;
   teamId: string;
-  position: PlayerPosition;
-  jerseyNumber: number;
 };
 
 type AddMatchMutation = {
@@ -180,12 +174,6 @@ export const emptyCompetitionData: CompetitionData = {
   newsPosts: [],
 };
 
-const validPlayerPositions: PlayerPosition[] = [
-  "Goalkeeper",
-  "Defender",
-  "Midfielder",
-  "Forward",
-];
 const validMatchEventTypes: MatchEventType[] = [
   "goal",
   "own_goal",
@@ -200,7 +188,7 @@ function nowIso() {
 function sortCompetitionData(data: CompetitionData): CompetitionData {
   return {
     teams: [...data.teams].sort((a, b) => a.name.localeCompare(b.name)),
-    players: [...data.players].sort((a, b) => a.jerseyNumber - b.jerseyNumber),
+    players: [...data.players].sort((a, b) => a.name.localeCompare(b.name)),
     matches: [...data.matches].sort(
       (a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime(),
     ),
@@ -214,12 +202,52 @@ function sortCompetitionData(data: CompetitionData): CompetitionData {
   };
 }
 
+function normalizePlayers(value: unknown): CompetitionData["players"] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  type LocalPlayer = CompetitionData["players"][number];
+
+  return value
+    .map((player): LocalPlayer | null => {
+      const item = player as {
+        id?: unknown;
+        teamId?: unknown;
+        name?: unknown;
+        createdAt?: unknown;
+      };
+
+      if (
+        typeof item.id !== "string" ||
+        typeof item.teamId !== "string" ||
+        typeof item.name !== "string" ||
+        !item.name.trim()
+      ) {
+        return null;
+      }
+
+      const normalizedPlayer: LocalPlayer = {
+        id: item.id,
+        teamId: item.teamId,
+        name: item.name.trim(),
+      };
+
+      if (typeof item.createdAt === "string") {
+        normalizedPlayer.createdAt = item.createdAt;
+      }
+
+      return normalizedPlayer;
+    })
+    .filter((player): player is LocalPlayer => player !== null);
+}
+
 function normalizeCompetitionData(value: unknown): CompetitionData {
   const data = value as Partial<CompetitionData> | null;
 
   return sortCompetitionData({
     teams: Array.isArray(data?.teams) ? data.teams : [],
-    players: Array.isArray(data?.players) ? data.players : [],
+    players: normalizePlayers(data?.players),
     matches: Array.isArray(data?.matches) ? data.matches : [],
     events: Array.isArray(data?.events) ? data.events : [],
     penalties: Array.isArray(data?.penalties) ? data.penalties : [],
@@ -269,14 +297,6 @@ function assertOptionalWholeNumber(value: unknown, message: string) {
   }
 
   return assertWholeNumber(value, message);
-}
-
-function assertPlayerPosition(value: unknown) {
-  if (!validPlayerPositions.includes(value as PlayerPosition)) {
-    throw new Error("Choose a valid player position");
-  }
-
-  return value as PlayerPosition;
 }
 
 function assertMatchEventType(value: unknown) {
@@ -420,26 +440,9 @@ function updateTeam(data: CompetitionData, mutation: UpdateTeamMutation): Compet
 function addPlayer(data: CompetitionData, mutation: AddPlayerMutation): CompetitionData {
   const name = assertString(mutation.name, "Player name is required");
   const teamId = assertString(mutation.teamId, "Choose a team");
-  const position = assertPlayerPosition(mutation.position);
-  const jerseyNumber = assertWholeNumber(
-    mutation.jerseyNumber,
-    "Jersey number must be a whole number",
-  );
-
-  if (jerseyNumber < 1 || jerseyNumber > 99) {
-    throw new Error("Jersey number must be between 1 and 99");
-  }
 
   if (!data.teams.some((team) => team.id === teamId)) {
     throw new Error("Selected team was not found");
-  }
-
-  if (
-    data.players.some(
-      (player) => player.teamId === teamId && player.jerseyNumber === jerseyNumber,
-    )
-  ) {
-    throw new Error("That jersey number is already taken for this team");
   }
 
   return {
@@ -450,8 +453,6 @@ function addPlayer(data: CompetitionData, mutation: AddPlayerMutation): Competit
         id: randomUUID(),
         teamId,
         name,
-        position,
-        jerseyNumber,
         createdAt: nowIso(),
       },
     ],
@@ -462,19 +463,10 @@ function updatePlayer(data: CompetitionData, mutation: UpdatePlayerMutation): Co
   const playerId = assertString(mutation.playerId, "Choose a player");
   const name = assertString(mutation.name, "Player name is required");
   const teamId = assertString(mutation.teamId, "Choose a team");
-  const position = assertPlayerPosition(mutation.position);
-  const jerseyNumber = assertWholeNumber(
-    mutation.jerseyNumber,
-    "Jersey number must be a whole number",
-  );
   const player = data.players.find((item) => item.id === playerId);
 
   if (!player) {
     throw new Error("Player was not found");
-  }
-
-  if (jerseyNumber < 1 || jerseyNumber > 99) {
-    throw new Error("Jersey number must be between 1 and 99");
   }
 
   if (!data.teams.some((team) => team.id === teamId)) {
@@ -491,18 +483,7 @@ function updatePlayer(data: CompetitionData, mutation: UpdatePlayerMutation): Co
     );
 
   if (hasRecordedActivity && teamId !== player.teamId) {
-    throw new Error("Only name, position, and jersey number can be edited after player activity");
-  }
-
-  if (
-    data.players.some(
-      (item) =>
-        item.id !== playerId &&
-        item.teamId === teamId &&
-        item.jerseyNumber === jerseyNumber,
-    )
-  ) {
-    throw new Error("That jersey number is already taken for this team");
+    throw new Error("Only player name can be edited after player activity");
   }
 
   return {
@@ -513,8 +494,6 @@ function updatePlayer(data: CompetitionData, mutation: UpdatePlayerMutation): Co
             ...item,
             teamId,
             name,
-            position,
-            jerseyNumber,
           }
         : item,
     ),
@@ -728,16 +707,16 @@ function updateCleanSheetGoalkeeper(
 
   const teamId = side === "home" ? match.homeTeamId : match.awayTeamId;
   const goalkeeperId = mutation.goalkeeperId
-    ? assertString(mutation.goalkeeperId, "Choose a goalkeeper")
+    ? assertString(mutation.goalkeeperId, "Choose a player")
     : null;
 
   if (goalkeeperId) {
-    const isValidGoalkeeper = getTeamGoalkeepers(data.players, teamId).some(
-      (player) => player.id === goalkeeperId,
+    const isValidGoalkeeper = data.players.some(
+      (player) => player.id === goalkeeperId && player.teamId === teamId,
     );
 
     if (!isValidGoalkeeper) {
-      throw new Error("Choose a goalkeeper from the team that kept the clean sheet");
+      throw new Error("Choose a player from the team that kept the clean sheet");
     }
   }
 

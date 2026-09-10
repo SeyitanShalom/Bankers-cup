@@ -49,4 +49,4 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 - Shootout goals are separate from normal goalscorer stats.
 - The admin match timer supports first half, half-time, second half, full-time, and penalties for knockout matches.
 - Live goal events update the match score, and disallowed goals can be marked so the score and stats correct automatically.
-- Goalkeeper clean sheets are credited after full-time by selecting the keeper for any team that conceded 0.
+- Clean sheets are credited after full-time by selecting the player who kept goal for any team that conceded 0.

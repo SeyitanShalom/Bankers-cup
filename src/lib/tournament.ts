@@ -96,11 +96,7 @@ export function getPlayer(players: Player[], playerId: string) {
 export function getTeamPlayers(players: Player[], teamId: string) {
   return players
     .filter((player) => player.teamId === teamId)
-    .sort((a, b) => a.jerseyNumber - b.jerseyNumber);
-}
-
-export function getTeamGoalkeepers(players: Player[], teamId: string) {
-  return getTeamPlayers(players, teamId).filter((player) => player.position === "Goalkeeper");
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export function isCleanSheetSide(
@@ -391,7 +387,7 @@ export function calculateCleanSheets(data: CompetitionData): CleanSheetRow[] {
   data.players.forEach((player) => {
     const team = teamById.get(player.teamId);
 
-    if (!team || player.position !== "Goalkeeper") return;
+    if (!team) return;
 
     rows.set(player.id, {
       player,

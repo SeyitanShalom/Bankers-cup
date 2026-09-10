@@ -48,7 +48,7 @@ import {
   formatStage,
   getCleanSheetGoalkeeperId,
   getMatchEvents,
-  getTeamGoalkeepers,
+  getTeamPlayers,
   HALF_DURATION_MINUTES,
   isCleanSheetSide,
   isKnockoutStage,
@@ -63,7 +63,6 @@ import type {
   MatchStage,
   NewsPost,
   Player,
-  PlayerPosition,
   Team,
 } from "@/lib/types";
 
@@ -75,7 +74,6 @@ type AuthStatus = "checking" | "signed_out" | "authorized" | "forbidden" | "unco
 
 type Tab = "teams" | "players" | "matches" | "events" | "news";
 
-const positions: PlayerPosition[] = ["Goalkeeper", "Defender", "Midfielder", "Forward"];
 const stages: MatchStage[] = ["group", "quarter_final", "semi_final", "final", "third_place"];
 const eventTypes: MatchEventType[] = ["goal", "own_goal", "yellow_card", "red_card"];
 const logoAccept = "image/png,image/jpeg,image/webp";
@@ -854,20 +852,9 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
     const form = new FormData(formElement);
     const name = String(form.get("name") ?? "").trim();
     const teamId = String(form.get("teamId") ?? "");
-    const position = String(form.get("position") ?? "Midfielder") as PlayerPosition;
-    const jerseyNumber = Number(form.get("jerseyNumber"));
 
-    if (!name || !teamId || !Number.isFinite(jerseyNumber)) {
-      setMessage("Player name, team, and jersey number are required");
-      return;
-    }
-
-    const duplicateNumber = data.players.some(
-      (player) => player.teamId === teamId && player.jerseyNumber === jerseyNumber,
-    );
-
-    if (duplicateNumber) {
-      setMessage("That jersey number is already taken for this team");
+    if (!name || !teamId) {
+      setMessage("Player name and team are required");
       return;
     }
 
@@ -878,8 +865,6 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
             action: "addPlayer",
             name,
             teamId,
-            position,
-            jerseyNumber,
           },
           `${name} added locally`,
         );
@@ -893,8 +878,6 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       const { error } = await db.from("players").insert({
         name,
         team_id: teamId,
-        position,
-        jersey_number: jerseyNumber,
       });
       if (error) throw error;
       await refreshData();
@@ -911,34 +894,15 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
     const form = new FormData(event.currentTarget);
     const name = String(form.get("name") ?? "").trim();
     const teamId = String(form.get("teamId") ?? "");
-    const position = String(form.get("position") ?? player.position) as PlayerPosition;
-    const jerseyNumber = Number(form.get("jerseyNumber"));
     const hasRecordedActivity = playerHasRecordedActivity(data, player.id);
 
-    if (!name || !teamId || !Number.isInteger(jerseyNumber)) {
-      setMessage("Player name, team, and jersey number are required");
-      return;
-    }
-
-    if (jerseyNumber < 1 || jerseyNumber > 99) {
-      setMessage("Jersey number must be between 1 and 99");
+    if (!name || !teamId) {
+      setMessage("Player name and team are required");
       return;
     }
 
     if (hasRecordedActivity && teamId !== player.teamId) {
-      setMessage("Only name, position, and jersey number can be edited after player activity");
-      return;
-    }
-
-    const duplicateNumber = data.players.some(
-      (item) =>
-        item.id !== player.id &&
-        item.teamId === teamId &&
-        item.jerseyNumber === jerseyNumber,
-    );
-
-    if (duplicateNumber) {
-      setMessage("That jersey number is already taken for this team");
+      setMessage("Only player name can be edited after player activity");
       return;
     }
 
@@ -950,8 +914,6 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
             playerId: player.id,
             name,
             teamId,
-            position,
-            jerseyNumber,
           },
           `${name} updated locally`,
         );
@@ -967,8 +929,6 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
         .update({
           name,
           team_id: teamId,
-          position,
-          jersey_number: jerseyNumber,
         })
         .eq("id", player.id);
 
@@ -1404,9 +1364,9 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
 
     if (
       goalkeeperId &&
-      !getTeamGoalkeepers(data.players, teamId).some((player) => player.id === goalkeeperId)
+      !data.players.some((player) => player.id === goalkeeperId && player.teamId === teamId)
     ) {
-      setMessage("Choose a goalkeeper from the team that kept the clean sheet");
+      setMessage("Choose a player from the team that kept the clean sheet");
       return;
     }
 
@@ -1419,7 +1379,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
             side,
             goalkeeperId,
           },
-          goalkeeperId ? "Clean sheet goalkeeper saved locally" : "Clean sheet goalkeeper cleared locally",
+          goalkeeperId ? "Clean sheet credit saved locally" : "Clean sheet credit cleared locally",
         );
         return;
       }
@@ -1440,9 +1400,9 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       if (error) throw error;
 
       await refreshData();
-      setMessage(goalkeeperId ? "Clean sheet goalkeeper saved" : "Clean sheet goalkeeper cleared");
+      setMessage(goalkeeperId ? "Clean sheet credit saved" : "Clean sheet credit cleared");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to update clean sheet goalkeeper");
+      setMessage(error instanceof Error ? error.message : "Unable to update clean sheet credit");
     }
   }
 
@@ -2379,23 +2339,6 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                   ))}
                 </select>
               </label>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="grid gap-2 text-sm font-bold text-zinc-700" htmlFor="position">
-                  Position
-                  <select
-                    id="position"
-                    name="position"
-                    className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
-                  >
-                    {positions.map((position) => (
-                      <option key={position} value={position}>
-                        {position}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <NumberInput id="jersey-number" name="jerseyNumber" label="Jersey number" min={1} max={99} />
-              </div>
               <button
                 type="submit"
                 className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-black text-white transition hover:bg-emerald-800"
@@ -2422,18 +2365,13 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                         onSubmit={(event) => updatePlayer(event, player)}
                         className="grid gap-3 rounded-md border border-emerald-200 bg-emerald-50/45 p-3"
                       >
-                        <div className="flex items-center gap-3">
-                          <span className="grid h-9 w-9 place-items-center rounded-md bg-zinc-950 text-sm font-black text-white">
-                            {player.jerseyNumber}
-                          </span>
-                          <div className="min-w-0">
-                            <p className="font-extrabold text-zinc-950">Edit player</p>
-                            {hasRecordedActivity ? (
-                              <p className="mt-1 text-xs font-bold text-amber-800">
-                                Team is locked because this player has match activity.
-                              </p>
-                            ) : null}
-                          </div>
+                        <div className="min-w-0">
+                          <p className="font-extrabold text-zinc-950">Edit player</p>
+                          {hasRecordedActivity ? (
+                            <p className="mt-1 text-xs font-bold text-amber-800">
+                              Team is locked because this player has match activity.
+                            </p>
+                          ) : null}
                         </div>
                         <label
                           className="grid gap-2 text-sm font-bold text-zinc-700"
@@ -2471,34 +2409,6 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                             ))}
                           </select>
                         </label>
-                        <div className="grid gap-4 sm:grid-cols-2">
-                          <label
-                            className="grid gap-2 text-sm font-bold text-zinc-700"
-                            htmlFor={`edit-player-position-${player.id}`}
-                          >
-                            Position
-                            <select
-                              id={`edit-player-position-${player.id}`}
-                              name="position"
-                              defaultValue={player.position}
-                              className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
-                            >
-                              {positions.map((position) => (
-                                <option key={position} value={position}>
-                                  {position}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <NumberInput
-                            id={`edit-jersey-number-${player.id}`}
-                            name="jerseyNumber"
-                            label="Jersey number"
-                            min={1}
-                            max={99}
-                            defaultValue={player.jerseyNumber}
-                          />
-                        </div>
                         <div className="flex flex-wrap gap-2">
                           <button
                             type="submit"
@@ -2519,14 +2429,11 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                         </div>
                       </form>
                     ) : (
-                      <div className="grid grid-cols-[auto_1fr_auto_auto_auto] gap-3">
-                        <span className="grid h-9 w-9 place-items-center rounded-md bg-zinc-950 text-sm font-black text-white">
-                          {player.jerseyNumber}
-                        </span>
+                      <div className="grid grid-cols-[1fr_auto_auto_auto] gap-3">
                         <div className="min-w-0">
                           <p className="truncate font-extrabold text-zinc-950">{player.name}</p>
                           <p className="truncate text-sm font-semibold text-zinc-500">
-                            {team?.name ?? "No team"} - {player.position}
+                            {team?.name ?? "No team"}
                           </p>
                         </div>
                         <div className="text-right text-xs font-bold text-zinc-500">
@@ -3146,13 +3053,13 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
             <section className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm lg:col-span-2">
               <div>
                 <p className="text-sm font-black uppercase tracking-wide text-emerald-700">
-                  Goalkeeper records
+                  Clean sheet records
                 </p>
                 <h2 className="text-2xl font-black text-zinc-950">Clean Sheet Credits</h2>
               </div>
               <div className="mt-5 grid gap-4 md:grid-cols-2">
                 {selectedCleanSheetSides.map(({ side, team }) => {
-                  const goalkeepers = getTeamGoalkeepers(data.players, team.id);
+                  const cleanSheetPlayers = getTeamPlayers(data.players, team.id);
                   const currentGoalkeeperId = getCleanSheetGoalkeeperId(selectedMatch, side);
 
                   return (
@@ -3174,22 +3081,22 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                           defaultValue={currentGoalkeeperId ?? ""}
                           className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
                         >
-                          <option value="">No goalkeeper selected</option>
-                          {goalkeepers.map((player) => (
+                          <option value="">No player selected</option>
+                          {cleanSheetPlayers.map((player) => (
                             <option key={player.id} value={player.id}>
-                              #{player.jerseyNumber} {player.name}
+                              {player.name}
                             </option>
                           ))}
                         </select>
                       </label>
-                      {goalkeepers.length === 0 ? (
+                      {cleanSheetPlayers.length === 0 ? (
                         <p className="mt-3 text-xs font-bold text-red-600">
-                          Add a goalkeeper to this team first.
+                          Add players to this team first.
                         </p>
                       ) : null}
                       <button
                         type="submit"
-                        disabled={editBlocked || goalkeepers.length === 0}
+                        disabled={editBlocked || cleanSheetPlayers.length === 0}
                         className="mt-4 inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-black text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-45"
                       >
                         <Shield className="h-4 w-4" aria-hidden="true" />
@@ -3255,7 +3162,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                 >
                   {eventTeamPlayers.map((player) => (
                     <option key={player.id} value={player.id}>
-                      #{player.jerseyNumber} {player.name}
+                      {player.name}
                     </option>
                   ))}
                 </select>
@@ -3271,7 +3178,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                   <option value="">No assist</option>
                   {assistPlayerOptions.map((player) => (
                     <option key={player.id} value={player.id}>
-                      #{player.jerseyNumber} {player.name}
+                      {player.name}
                     </option>
                   ))}
                 </select>
@@ -3490,7 +3397,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                               {editingEventPlayers.length > 0 ? (
                                 editingEventPlayers.map((player) => (
                                   <option key={player.id} value={player.id}>
-                                    #{player.jerseyNumber} {player.name}
+                                    {player.name}
                                   </option>
                                 ))
                               ) : (
@@ -3516,7 +3423,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                               <option value="">No assist</option>
                               {editingAssistOptions.map((player) => (
                                 <option key={player.id} value={player.id}>
-                                  #{player.jerseyNumber} {player.name}
+                                  {player.name}
                                 </option>
                               ))}
                             </select>
@@ -3615,7 +3522,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                             <option value="">No assist</option>
                             {assistOptions.map((player) => (
                               <option key={player.id} value={player.id}>
-                                #{player.jerseyNumber} {player.name}
+                                {player.name}
                               </option>
                             ))}
                           </select>

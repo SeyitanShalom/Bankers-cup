@@ -77,13 +77,9 @@ export default async function TeamDetailPage({
                   const stats = playerStats.find((stat) => stat.player.id === player.id);
 
                   return (
-                    <div key={player.id} className="grid grid-cols-[auto_1fr_auto] gap-3 py-3">
-                      <span className="grid h-9 w-9 place-items-center rounded-md bg-zinc-950 text-sm font-black text-white">
-                        {player.jerseyNumber}
-                      </span>
+                    <div key={player.id} className="grid grid-cols-[1fr_auto] gap-3 py-3">
                       <div className="min-w-0">
                         <p className="truncate font-extrabold text-zinc-950">{player.name}</p>
-                        <p className="text-sm font-semibold text-zinc-500">{player.position}</p>
                       </div>
                       <div className="text-right text-xs font-bold text-zinc-500">
                         <p>{stats?.goals ?? 0} goals</p>

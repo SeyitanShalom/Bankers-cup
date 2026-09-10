@@ -20,12 +20,6 @@ export type MatchTimerPhase =
   | "full_time"
   | "penalties";
 
-export type PlayerPosition =
-  | "Goalkeeper"
-  | "Defender"
-  | "Midfielder"
-  | "Forward";
-
 export type MatchEventType = "goal" | "own_goal" | "yellow_card" | "red_card";
 
 export type PenaltyOutcome = "scored" | "missed" | "saved";
@@ -41,8 +35,6 @@ export type Player = {
   id: string;
   teamId: string;
   name: string;
-  position: PlayerPosition;
-  jerseyNumber: number;
   createdAt?: string;
 };
 
