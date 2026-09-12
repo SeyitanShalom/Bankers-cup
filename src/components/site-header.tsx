@@ -37,7 +37,7 @@ export function SiteHeader() {
   const pathname = usePathname();
 
   return (
-    <header className="animate-drop-in sticky top-0 z-40 border-b border-zinc-200 bg-white/95 backdrop-blur">
+    <header className="animate-drop-in fixed inset-x-0 top-0 z-40 border-b border-zinc-200 bg-white/95 backdrop-blur">
       <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
         <Link href="/" className="group flex items-center gap-3">
           <span className="grid h-10 w-10 place-items-center rounded-md bg-zinc-950 text-white transition duration-200 group-hover:rotate-3 group-hover:bg-emerald-800">

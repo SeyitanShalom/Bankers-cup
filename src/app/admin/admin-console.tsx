@@ -1462,7 +1462,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
     }
 
     if (minute < 1 || minute > MATCH_DURATION_MINUTES) {
-      setMessage("Event minute must be between 1 and 60");
+      setMessage(`Event minute must be between 1 and ${MATCH_DURATION_MINUTES}`);
       return;
     }
 
@@ -1615,7 +1615,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
     }
 
     if (minute < 1 || minute > MATCH_DURATION_MINUTES) {
-      setMessage("Event minute must be between 1 and 60");
+      setMessage(`Event minute must be between 1 and ${MATCH_DURATION_MINUTES}`);
       return;
     }
 

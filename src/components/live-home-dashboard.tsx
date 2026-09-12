@@ -16,6 +16,7 @@ import {
   formatStage,
   getRecentResults,
   getUpcomingMatches,
+  MATCH_DURATION_MINUTES,
 } from "@/lib/tournament";
 import type { CompetitionData } from "@/lib/types";
 import { useLiveCompetitionData } from "./use-live-match";
@@ -137,7 +138,7 @@ export function LiveHomeDashboard({ initialData }: LiveHomeDashboardProps) {
                   <Timer className="h-4 w-4 text-amber-300" aria-hidden="true" />
                   Match
                 </dt>
-                <dd className="mt-2 text-3xl font-black text-white">60m</dd>
+                <dd className="mt-2 text-3xl font-black text-white">{MATCH_DURATION_MINUTES}m</dd>
               </div>
               <div className="motion-card rounded-md p-2">
                 <dt className="flex items-center gap-2 text-xs font-black uppercase text-zinc-300">

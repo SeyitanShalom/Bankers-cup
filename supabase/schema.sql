@@ -51,7 +51,7 @@ create table if not exists public.match_events (
   assist_player_id uuid references public.players(id) on delete set null,
   event_type text not null check (event_type in ('goal', 'own_goal', 'yellow_card', 'red_card')),
   half integer not null check (half in (1, 2)),
-  minute integer not null check (minute between 1 and 60),
+  minute integer not null check (minute between 1 and 70),
   added_time integer not null default 0 check (added_time between 0 and 20),
   is_disallowed boolean not null default false,
   notes text,
@@ -124,6 +124,10 @@ alter table if exists public.matches replica identity full;
 
 alter table if exists public.match_events
   add column if not exists is_disallowed boolean not null default false;
+
+alter table if exists public.match_events
+  drop constraint if exists match_events_minute_check,
+  add constraint match_events_minute_check check (minute between 1 and 70);
 
 update public.match_events
 set assist_player_id = null

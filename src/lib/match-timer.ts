@@ -120,7 +120,7 @@ export function getTimerSnapshot(match: Match, now?: number): TimerSnapshot {
     not_started: { label: "Kickoff", phaseLabel: "Not started" },
     first_half: { label: "1'", phaseLabel: "1st half" },
     half_time: { label: "HT", phaseLabel: "Half-time" },
-    second_half: { label: "31'", phaseLabel: "2nd half" },
+    second_half: { label: `${HALF_DURATION_MINUTES + 1}'`, phaseLabel: "2nd half" },
     full_time: { label: "FT", phaseLabel: "Full-time" },
     penalties: { label: "PEN", phaseLabel: "Penalties" },
   };

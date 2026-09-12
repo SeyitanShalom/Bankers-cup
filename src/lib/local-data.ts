@@ -779,7 +779,7 @@ function addEvent(data: CompetitionData, mutation: AddEventMutation): Competitio
   }
 
   if (minute < 1 || minute > MATCH_DURATION_MINUTES) {
-    throw new Error("Event minute must be between 1 and 60");
+    throw new Error(`Event minute must be between 1 and ${MATCH_DURATION_MINUTES}`);
   }
 
   if (addedTime > 20) {
@@ -870,7 +870,7 @@ function updateMatchEvent(
   }
 
   if (minute < 1 || minute > MATCH_DURATION_MINUTES) {
-    throw new Error("Event minute must be between 1 and 60");
+    throw new Error(`Event minute must be between 1 and ${MATCH_DURATION_MINUTES}`);
   }
 
   if (addedTime > 20) {

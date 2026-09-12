@@ -13,6 +13,7 @@ import {
   getMatchEvents,
   getTeam,
   isKnockoutStage,
+  MATCH_DURATION_MINUTES,
 } from "@/lib/tournament";
 
 export const dynamic = "force-dynamic";
@@ -92,7 +93,7 @@ export default async function MatchDetailPage({
         </div>
         {knockout && (
           <div className="border-t border-zinc-100 bg-emerald-50 px-5 py-3 text-sm font-bold text-emerald-800">
-            Tied after 60 minutes goes straight to penalties.
+            Tied after {MATCH_DURATION_MINUTES} minutes goes straight to penalties.
           </div>
         )}
       </section>

@@ -12,8 +12,8 @@ import type {
 
 export type MatchSide = "home" | "away";
 
-export const MATCH_DURATION_MINUTES = 60;
-export const HALF_DURATION_MINUTES = 30;
+export const HALF_DURATION_MINUTES = 35;
+export const MATCH_DURATION_MINUTES = HALF_DURATION_MINUTES * 2;
 export const LEAGUE_PHASE_MATCHES_PER_TEAM = 4;
 export const QUALIFICATION_PLACES = 8;
 export const QUARTER_FINAL_SEED_PAIRS = [
