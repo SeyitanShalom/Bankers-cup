@@ -1,6 +1,7 @@
 import type {
   CleanSheetRow,
   CompetitionData,
+  DisciplineStatRow,
   Match,
   MatchEvent,
   MatchStage,
@@ -353,6 +354,10 @@ export function calculatePlayerStats(data: CompetitionData): PlayerStatRow[] {
   });
 
   data.events.forEach((event) => {
+    if (!event.playerId) {
+      return;
+    }
+
     const playerStats = stats.get(event.playerId);
 
     if (event.type === "goal" && !event.isDisallowed && playerStats) {
@@ -377,6 +382,71 @@ export function calculatePlayerStats(data: CompetitionData): PlayerStatRow[] {
     if (b.goals !== a.goals) return b.goals - a.goals;
     if (b.assists !== a.assists) return b.assists - a.assists;
     return a.player.name.localeCompare(b.player.name);
+  });
+}
+
+export function calculateDisciplineStats(data: CompetitionData): DisciplineStatRow[] {
+  const teamById = new Map(data.teams.map((team) => [team.id, team]));
+  const stats = new Map<string, DisciplineStatRow>();
+
+  data.players.forEach((player) => {
+    const team = teamById.get(player.teamId);
+
+    if (!team) return;
+
+    stats.set(`player:${player.id}`, {
+      participant: player,
+      participantType: "player",
+      team,
+      yellowCards: 0,
+      redCards: 0,
+    });
+  });
+
+  data.events.forEach((event) => {
+    if (event.type !== "yellow_card" && event.type !== "red_card") {
+      return;
+    }
+
+    let row: DisciplineStatRow | undefined;
+
+    if (event.recipientType === "coach") {
+      const team = teamById.get(event.teamId);
+      const key = `coach:${event.teamId}`;
+
+      if (!team) return;
+
+      row =
+        stats.get(key) ??
+        {
+          participant: {
+            id: key,
+            name: "Coach",
+          },
+          participantType: "coach",
+          team,
+          yellowCards: 0,
+          redCards: 0,
+        };
+      stats.set(key, row);
+    } else {
+      row = event.playerId ? stats.get(`player:${event.playerId}`) : undefined;
+    }
+
+    if (!row) return;
+
+    if (event.type === "yellow_card") {
+      row.yellowCards += 1;
+    } else {
+      row.redCards += 1;
+    }
+  });
+
+  return Array.from(stats.values()).sort((a, b) => {
+    if (b.yellowCards !== a.yellowCards) return b.yellowCards - a.yellowCards;
+    if (b.redCards !== a.redCards) return b.redCards - a.redCards;
+    if (a.team.name !== b.team.name) return a.team.name.localeCompare(b.team.name);
+    return a.participant.name.localeCompare(b.participant.name);
   });
 }
 

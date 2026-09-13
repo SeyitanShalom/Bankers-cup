@@ -68,7 +68,9 @@ export function MatchTimelineList({
     <div className="space-y-3">
       {events.map((event) => {
         const team = getTeam(teams, event.teamId);
-        const player = getPlayer(players, event.playerId);
+        const player = event.playerId ? getPlayer(players, event.playerId) : null;
+        const recipientName =
+          event.recipientType === "coach" ? "Coach" : player?.name ?? "Unknown recipient";
         const assist = event.assistPlayerId ? getPlayer(players, event.assistPlayerId) : null;
         const actions = renderActions?.(event);
 
@@ -91,7 +93,7 @@ export function MatchTimelineList({
                 {formatEventTime(event)}&apos; {getEventLabel(event)}
               </p>
               <p className="text-sm font-semibold text-zinc-600">
-                {player?.name ?? "Unknown player"}
+                {recipientName}
                 {assist ? `, assist by ${assist.name}` : ""} -{" "}
                 {team?.name ?? "Unknown team"}
               </p>

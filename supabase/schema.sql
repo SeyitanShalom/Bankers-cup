@@ -47,7 +47,8 @@ create table if not exists public.match_events (
   id uuid primary key default gen_random_uuid(),
   match_id uuid not null references public.matches(id) on delete cascade,
   team_id uuid not null references public.teams(id) on delete restrict,
-  player_id uuid not null references public.players(id) on delete restrict,
+  player_id uuid references public.players(id) on delete restrict,
+  recipient_type text not null default 'player' check (recipient_type in ('player', 'coach')),
   assist_player_id uuid references public.players(id) on delete set null,
   event_type text not null check (event_type in ('goal', 'own_goal', 'yellow_card', 'red_card')),
   half integer not null check (half in (1, 2)),
@@ -56,6 +57,19 @@ create table if not exists public.match_events (
   is_disallowed boolean not null default false,
   notes text,
   created_at timestamptz not null default now(),
+  constraint match_events_recipient_check check (
+    (
+      event_type in ('goal', 'own_goal') and
+      recipient_type = 'player' and
+      player_id is not null
+    ) or (
+      event_type in ('yellow_card', 'red_card') and
+      (
+        (recipient_type = 'player' and player_id is not null) or
+        (recipient_type = 'coach' and player_id is null)
+      )
+    )
+  ),
   constraint match_events_no_self_assist check (
     assist_player_id is null or assist_player_id <> player_id
   )
@@ -80,12 +94,42 @@ create table if not exists public.news_posts (
   created_at timestamptz not null default now()
 );
 
+alter table if exists public.match_events
+  alter column player_id drop not null;
+
+alter table if exists public.match_events
+  add column if not exists recipient_type text not null default 'player';
+
+do $$
+begin
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'match_events'
+      and column_name = 'coach_id'
+  ) then
+    update public.match_events
+    set recipient_type = 'coach',
+        player_id = null,
+        assist_player_id = null
+    where coach_id is not null
+      and event_type in ('yellow_card', 'red_card');
+  end if;
+end $$;
+
+alter table if exists public.match_events
+  drop column if exists coach_id;
+
+drop table if exists public.coaches;
+
 create index if not exists players_team_id_idx on public.players(team_id);
 create index if not exists matches_kickoff_idx on public.matches(kickoff);
 create index if not exists matches_stage_idx on public.matches(stage);
 create index if not exists matches_status_idx on public.matches(status);
 create index if not exists match_events_match_id_idx on public.match_events(match_id);
 create index if not exists match_events_player_id_idx on public.match_events(player_id);
+create index if not exists match_events_recipient_type_idx on public.match_events(recipient_type);
 create index if not exists penalty_events_match_id_idx on public.penalty_shootout_events(match_id);
 create index if not exists news_posts_published_at_idx on public.news_posts(published_at desc);
 
@@ -123,6 +167,12 @@ alter table if exists public.matches
 alter table if exists public.matches replica identity full;
 
 alter table if exists public.match_events
+  alter column player_id drop not null;
+
+alter table if exists public.match_events
+  add column if not exists recipient_type text not null default 'player';
+
+alter table if exists public.match_events
   add column if not exists is_disallowed boolean not null default false;
 
 alter table if exists public.match_events
@@ -132,6 +182,49 @@ alter table if exists public.match_events
 update public.match_events
 set assist_player_id = null
 where assist_player_id = player_id;
+
+do $$
+begin
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'match_events'
+      and column_name = 'coach_id'
+  ) then
+    update public.match_events
+    set recipient_type = 'coach',
+        player_id = null,
+        assist_player_id = null
+    where coach_id is not null
+      and event_type in ('yellow_card', 'red_card');
+  end if;
+end $$;
+
+alter table if exists public.match_events
+  drop column if exists coach_id;
+
+alter table if exists public.match_events
+  drop constraint if exists match_events_recipient_type_check,
+  add constraint match_events_recipient_type_check check (
+    recipient_type in ('player', 'coach')
+  );
+
+alter table if exists public.match_events
+  drop constraint if exists match_events_recipient_check,
+  add constraint match_events_recipient_check check (
+    (
+      event_type in ('goal', 'own_goal') and
+      recipient_type = 'player' and
+      player_id is not null
+    ) or (
+      event_type in ('yellow_card', 'red_card') and
+      (
+        (recipient_type = 'player' and player_id is not null) or
+        (recipient_type = 'coach' and player_id is null)
+      )
+    )
+  );
 
 alter table if exists public.match_events
   drop constraint if exists match_events_no_self_assist,
@@ -143,11 +236,19 @@ alter table if exists public.match_events replica identity full;
 
 do $$
 begin
-  alter publication supabase_realtime add table public.matches;
-  alter publication supabase_realtime add table public.match_events;
-exception
-  when duplicate_object then null;
-  when undefined_object then null;
+  begin
+    alter publication supabase_realtime add table public.matches;
+  exception
+    when duplicate_object then null;
+    when undefined_object then null;
+  end;
+
+  begin
+    alter publication supabase_realtime add table public.match_events;
+  exception
+    when duplicate_object then null;
+    when undefined_object then null;
+  end;
 end $$;
 
 create or replace function public.validate_match_integrity()
@@ -250,17 +351,35 @@ begin
     raise exception 'Choose one of the teams playing this match';
   end if;
 
-  select team_id
-  into event_player_team_id
-  from public.players
-  where id = new.player_id;
+  if new.event_type in ('goal', 'own_goal') then
+    if new.recipient_type <> 'player' or new.player_id is null then
+      raise exception 'Goals must be assigned to a player';
+    end if;
+  end if;
 
-  if event_player_team_id is distinct from new.team_id then
-    raise exception 'Choose a player from the selected team';
+  if new.event_type in ('yellow_card', 'red_card') then
+    if new.recipient_type = 'player' and new.player_id is null then
+      raise exception 'Choose a player or coach for the card';
+    end if;
+
+    if new.recipient_type = 'coach' and new.player_id is not null then
+      raise exception 'Coach cards should not be assigned to a player';
+    end if;
   end if;
 
   if new.event_type <> 'goal' and new.assist_player_id is not null then
     raise exception 'Assists can only be added to goal events';
+  end if;
+
+  if new.player_id is not null then
+    select team_id
+    into event_player_team_id
+    from public.players
+    where id = new.player_id;
+
+    if event_player_team_id is distinct from new.team_id then
+      raise exception 'Choose a player from the selected team';
+    end if;
   end if;
 
   if new.assist_player_id is not null then

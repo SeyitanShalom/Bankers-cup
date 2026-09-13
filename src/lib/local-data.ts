@@ -14,8 +14,10 @@ import {
 import type {
   CompetitionData,
   Match,
+  MatchEventRecipientType,
   MatchEventType,
   MatchStage,
+  Player,
 } from "./types";
 
 type AddTeamMutation = {
@@ -87,7 +89,8 @@ type AddEventMutation = {
   action: "addEvent";
   matchId: string;
   teamId: string;
-  playerId: string;
+  playerId: string | null;
+  recipientType?: MatchEventRecipientType;
   assistPlayerId: string | null;
   type: MatchEventType;
   half: 1 | 2;
@@ -100,7 +103,8 @@ type UpdateMatchEventMutation = {
   action: "updateMatchEvent";
   eventId: string;
   teamId: string;
-  playerId: string;
+  playerId: string | null;
+  recipientType?: MatchEventRecipientType;
   assistPlayerId: string | null;
   type: MatchEventType;
   half: 1 | 2;
@@ -242,6 +246,30 @@ function normalizePlayers(value: unknown): CompetitionData["players"] {
     .filter((player): player is LocalPlayer => player !== null);
 }
 
+function normalizeMatchEvents(value: unknown): CompetitionData["events"] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  type LocalMatchEvent = CompetitionData["events"][number];
+
+  return value.map((event) => {
+    const item = event as LocalMatchEvent & { coachId?: unknown };
+    const { coachId: legacyCoachId, ...eventWithoutLegacyCoachId } = item;
+    const recipientType: MatchEventRecipientType =
+      item.recipientType === "coach" || typeof legacyCoachId === "string"
+        ? "coach"
+        : "player";
+
+    return {
+      ...eventWithoutLegacyCoachId,
+      playerId: recipientType === "coach" ? null : item.playerId ?? null,
+      recipientType,
+      assistPlayerId: item.assistPlayerId ?? null,
+    };
+  });
+}
+
 function normalizeCompetitionData(value: unknown): CompetitionData {
   const data = value as Partial<CompetitionData> | null;
 
@@ -249,7 +277,7 @@ function normalizeCompetitionData(value: unknown): CompetitionData {
     teams: Array.isArray(data?.teams) ? data.teams : [],
     players: normalizePlayers(data?.players),
     matches: Array.isArray(data?.matches) ? data.matches : [],
-    events: Array.isArray(data?.events) ? data.events : [],
+    events: normalizeMatchEvents(data?.events),
     penalties: Array.isArray(data?.penalties) ? data.penalties : [],
     newsPosts: Array.isArray(data?.newsPosts) ? data.newsPosts : [],
   });
@@ -319,6 +347,59 @@ function assertIsoDate(value: unknown, message: string) {
 
 function isScoreEventType(type: MatchEventType) {
   return type === "goal" || type === "own_goal";
+}
+
+function isCardEventType(type: MatchEventType) {
+  return type === "yellow_card" || type === "red_card";
+}
+
+function getOptionalString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function validateMatchEventRecipient(
+  data: CompetitionData,
+  type: MatchEventType,
+  teamId: string,
+  playerIdValue: unknown,
+  recipientTypeValue: unknown,
+): {
+  playerId: string | null;
+  recipientType: MatchEventRecipientType;
+  player: Player | null;
+} {
+  const playerId = getOptionalString(playerIdValue);
+  const requestedRecipientType =
+    recipientTypeValue === "coach" || recipientTypeValue === "player"
+      ? recipientTypeValue
+      : "player";
+  const recipientType = isCardEventType(type) ? requestedRecipientType : "player";
+
+  if (isScoreEventType(type)) {
+    if (!playerId) {
+      throw new Error("Choose a player");
+    }
+  }
+
+  if (isCardEventType(type) && recipientType === "player" && !playerId) {
+    throw new Error("Choose a player or coach for the card");
+  }
+
+  const player = playerId ? data.players.find((item) => item.id === playerId) ?? null : null;
+
+  if (recipientType === "player" && playerId && !player) {
+    throw new Error("Selected player was not found");
+  }
+
+  if (recipientType === "player" && player && player.teamId !== teamId) {
+    throw new Error("Choose a player from the selected team");
+  }
+
+  return {
+    playerId: recipientType === "player" ? playerId : null,
+    recipientType,
+    player: recipientType === "player" ? player : null,
+  };
 }
 
 function getMatchEvents(data: CompetitionData, matchId: string) {
@@ -731,13 +812,18 @@ function updateCleanSheetGoalkeeper(
 function addEvent(data: CompetitionData, mutation: AddEventMutation): CompetitionData {
   const matchId = assertString(mutation.matchId, "Select a match");
   const teamId = assertString(mutation.teamId, "Choose a team");
-  const playerId = assertString(mutation.playerId, "Choose a player");
   const type = assertMatchEventType(mutation.type);
   const half = mutation.half;
   const minute = assertWholeNumber(mutation.minute, "Event minute must be a whole number");
   const addedTime = assertWholeNumber(mutation.addedTime, "Added time must be a whole number");
   const match = data.matches.find((item) => item.id === matchId);
-  const player = data.players.find((item) => item.id === playerId);
+  const recipient = validateMatchEventRecipient(
+    data,
+    type,
+    teamId,
+    mutation.playerId,
+    mutation.recipientType,
+  );
   const assistPlayerId =
     type === "goal" && mutation.assistPlayerId
       ? assertString(mutation.assistPlayerId, "Choose an assist")
@@ -750,19 +836,11 @@ function addEvent(data: CompetitionData, mutation: AddEventMutation): Competitio
     throw new Error("Selected match was not found");
   }
 
-  if (!player) {
-    throw new Error("Selected player was not found");
-  }
-
   if (teamId !== match.homeTeamId && teamId !== match.awayTeamId) {
     throw new Error("Choose one of the teams playing this match");
   }
 
-  if (player.teamId !== teamId) {
-    throw new Error("Choose a player from the selected team");
-  }
-
-  if (assistPlayerId === playerId) {
+  if (assistPlayerId === recipient.playerId) {
     throw new Error("A player cannot assist their own goal");
   }
 
@@ -794,7 +872,8 @@ function addEvent(data: CompetitionData, mutation: AddEventMutation): Competitio
         id: randomUUID(),
         matchId,
         teamId,
-        playerId,
+        playerId: recipient.playerId,
+        recipientType: recipient.recipientType,
         assistPlayerId,
         type,
         half,
@@ -816,13 +895,18 @@ function updateMatchEvent(
 ): CompetitionData {
   const eventId = assertString(mutation.eventId, "Choose a match event");
   const teamId = assertString(mutation.teamId, "Choose a team");
-  const playerId = assertString(mutation.playerId, "Choose a player");
   const type = assertMatchEventType(mutation.type);
   const half = mutation.half;
   const minute = assertWholeNumber(mutation.minute, "Event minute must be a whole number");
   const addedTime = assertWholeNumber(mutation.addedTime, "Added time must be a whole number");
   const matchEvent = data.events.find((event) => event.id === eventId);
-  const player = data.players.find((item) => item.id === playerId);
+  const recipient = validateMatchEventRecipient(
+    data,
+    type,
+    teamId,
+    mutation.playerId,
+    mutation.recipientType,
+  );
   const assistPlayerId =
     type === "goal" && mutation.assistPlayerId
       ? assertString(mutation.assistPlayerId, "Choose an assist")
@@ -841,19 +925,11 @@ function updateMatchEvent(
     throw new Error("Selected match was not found");
   }
 
-  if (!player) {
-    throw new Error("Selected player was not found");
-  }
-
   if (teamId !== match.homeTeamId && teamId !== match.awayTeamId) {
     throw new Error("Choose one of the teams playing this match");
   }
 
-  if (player.teamId !== teamId) {
-    throw new Error("Choose a player from the selected team");
-  }
-
-  if (assistPlayerId === playerId) {
+  if (assistPlayerId === recipient.playerId) {
     throw new Error("A player cannot assist their own goal");
   }
 
@@ -882,7 +958,8 @@ function updateMatchEvent(
       ? {
           ...event,
           teamId,
-          playerId,
+          playerId: recipient.playerId,
+          recipientType: recipient.recipientType,
           assistPlayerId,
           type,
           half,

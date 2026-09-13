@@ -4,7 +4,12 @@ import { ArrowLeft } from "lucide-react";
 import { MatchCard } from "@/components/match-card";
 import { TeamCrest } from "@/components/team-crest";
 import { getCompetitionData } from "@/lib/data";
-import { calculatePlayerStats, calculateStandings, getTeam, getTeamPlayers } from "@/lib/tournament";
+import {
+  calculatePlayerStats,
+  calculateStandings,
+  getTeam,
+  getTeamPlayers,
+} from "@/lib/tournament";
 
 export const dynamic = "force-dynamic";
 

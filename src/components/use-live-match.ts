@@ -6,6 +6,7 @@ import type {
   CompetitionData,
   Match,
   MatchEvent,
+  MatchEventRecipientType,
   MatchEventType,
   MatchTimerPhase,
 } from "@/lib/types";
@@ -28,7 +29,9 @@ type SupabaseMatchEventPayload = {
   id: string;
   match_id: string;
   team_id: string;
-  player_id: string;
+  player_id: string | null;
+  recipient_type?: MatchEventRecipientType | null;
+  coach_id?: string | null;
   assist_player_id: string | null;
   event_type: MatchEventType;
   half: 1 | 2;
@@ -88,11 +91,15 @@ function mergePayloadMatch(match: Match, payload: SupabaseMatchPayload): Match {
 }
 
 function mapPayloadEvent(payload: SupabaseMatchEventPayload): MatchEvent {
+  const recipientType =
+    payload.recipient_type === "coach" || payload.coach_id ? "coach" : "player";
+
   return {
     id: payload.id,
     matchId: payload.match_id,
     teamId: payload.team_id,
-    playerId: payload.player_id,
+    playerId: recipientType === "player" ? payload.player_id : null,
+    recipientType,
     assistPlayerId: payload.assist_player_id,
     type: payload.event_type,
     half: payload.half,

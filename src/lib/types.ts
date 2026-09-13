@@ -22,6 +22,8 @@ export type MatchTimerPhase =
 
 export type MatchEventType = "goal" | "own_goal" | "yellow_card" | "red_card";
 
+export type MatchEventRecipientType = "player" | "coach";
+
 export type PenaltyOutcome = "scored" | "missed" | "saved";
 
 export type Team = {
@@ -63,7 +65,8 @@ export type MatchEvent = {
   id: string;
   matchId: string;
   teamId: string;
-  playerId: string;
+  playerId: string | null;
+  recipientType: MatchEventRecipientType;
   assistPlayerId?: string | null;
   type: MatchEventType;
   half: 1 | 2;
@@ -119,6 +122,17 @@ export type PlayerStatRow = {
   team: Team;
   goals: number;
   assists: number;
+  yellowCards: number;
+  redCards: number;
+};
+
+export type DisciplineStatRow = {
+  participant: {
+    id: string;
+    name: string;
+  };
+  participantType: "player" | "coach";
+  team: Team;
   yellowCards: number;
   redCards: number;
 };

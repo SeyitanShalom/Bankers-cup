@@ -59,6 +59,7 @@ import type {
   CompetitionData,
   Match,
   MatchEvent,
+  MatchEventRecipientType,
   MatchEventType,
   MatchStage,
   NewsPost,
@@ -89,7 +90,9 @@ type SupabaseMatchEventRow = {
   id: string;
   match_id: string;
   team_id: string;
-  player_id: string;
+  player_id: string | null;
+  recipient_type?: MatchEventRecipientType | null;
+  coach_id?: string | null;
   assist_player_id: string | null;
   event_type: MatchEventType;
   half: 1 | 2;
@@ -104,6 +107,8 @@ type LocalCompetitionMutation = {
   action: string;
   [key: string]: unknown;
 };
+
+type EventRecipientType = "player" | "coach";
 
 function slugify(value: string) {
   return value
@@ -217,12 +222,20 @@ function isScoreEventType(type: MatchEventType) {
   return type === "goal" || type === "own_goal";
 }
 
+function isCardEventType(type: MatchEventType) {
+  return type === "yellow_card" || type === "red_card";
+}
+
 function mapSupabaseMatchEvent(row: SupabaseMatchEventRow): MatchEvent {
+  const recipientType =
+    row.recipient_type === "coach" || row.coach_id ? "coach" : "player";
+
   return {
     id: row.id,
     matchId: row.match_id,
     teamId: row.team_id,
-    playerId: row.player_id,
+    playerId: recipientType === "player" ? row.player_id : null,
+    recipientType,
     assistPlayerId: row.assist_player_id,
     type: row.event_type,
     half: row.half,
@@ -350,6 +363,40 @@ function isValidOptionalWholeNumber(value: number | null) {
   return value === null || (Number.isInteger(value) && value >= 0);
 }
 
+function getErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  if (typeof error === "object" && error !== null) {
+    const candidate = error as {
+      message?: unknown;
+      error_description?: unknown;
+      details?: unknown;
+      hint?: unknown;
+    };
+    const parts = [candidate.message, candidate.error_description, candidate.details, candidate.hint]
+      .filter((part): part is string => typeof part === "string" && part.trim().length > 0)
+      .map((part) => part.trim());
+
+    if (parts.length > 0) {
+      const text = parts.join(" ");
+
+      if (text.includes("match_events_minute_check")) {
+        return `Event minute must be between 1 and ${MATCH_DURATION_MINUTES}. Use added time separately for stoppage time.`;
+      }
+
+      return parts.join(" ");
+    }
+  }
+
+  if (typeof error === "string" && error.trim()) {
+    return error.trim();
+  }
+
+  return fallback;
+}
+
 function toDatetimeLocalValue(value: string) {
   const date = new Date(value);
 
@@ -398,7 +445,10 @@ function mergeMatchEvents(events: MatchEvent[], updatedEvents: MatchEvent[]) {
   return Array.from(eventsById.values());
 }
 
-function getAssistPlayerOptions(players: Player[], matchEvent: Pick<MatchEvent, "teamId" | "playerId" | "type">) {
+function getAssistPlayerOptions(
+  players: Player[],
+  matchEvent: Pick<MatchEvent, "teamId" | "playerId" | "type">,
+) {
   if (matchEvent.type !== "goal") {
     return [];
   }
@@ -406,6 +456,27 @@ function getAssistPlayerOptions(players: Player[], matchEvent: Pick<MatchEvent, 
   return players.filter(
     (player) => player.teamId === matchEvent.teamId && player.id !== matchEvent.playerId,
   );
+}
+
+function getEventRecipientType(type: MatchEventType, requested: EventRecipientType) {
+  return isCardEventType(type) ? requested : "player";
+}
+
+function getMatchEventRecipientIds({
+  type,
+  recipientType,
+  playerId,
+}: {
+  type: MatchEventType;
+  recipientType: EventRecipientType;
+  playerId: string;
+}) {
+  const activeRecipientType = getEventRecipientType(type, recipientType);
+
+  return {
+    recipientType: activeRecipientType,
+    playerId: activeRecipientType === "player" ? playerId : "",
+  };
 }
 
 function updateDataWithMatchOutcome(
@@ -469,11 +540,15 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [editingEventTeamId, setEditingEventTeamId] = useState("");
   const [editingEventType, setEditingEventType] = useState<MatchEventType>("goal");
+  const [editingEventRecipientType, setEditingEventRecipientType] =
+    useState<EventRecipientType>("player");
   const [editingEventPlayerId, setEditingEventPlayerId] = useState("");
   const [selectedEventTeamId, setSelectedEventTeamId] = useState(() =>
     getInitialEventTeamId(initialData),
   );
   const [selectedEventType, setSelectedEventType] = useState<MatchEventType>("goal");
+  const [selectedEventRecipientType, setSelectedEventRecipientType] =
+    useState<EventRecipientType>("player");
   const [selectedEventPlayerId, setSelectedEventPlayerId] = useState("");
   const supabase = useMemo(() => createBrowserSupabaseClient(), []);
   const standings = useMemo(() => calculateStandings(data.teams, data.matches), [data]);
@@ -520,15 +595,21 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
     ? selectedEventTeamId
     : selectedEventTeamOptions[0]?.id ?? "";
   const eventTeamPlayers = data.players.filter((player) => player.teamId === activeEventTeamId);
+  const activeEventRecipientType = getEventRecipientType(
+    selectedEventType,
+    selectedEventRecipientType,
+  );
   const activeEventPlayerId = eventTeamPlayers.some(
     (player) => player.id === selectedEventPlayerId,
   )
     ? selectedEventPlayerId
     : eventTeamPlayers[0]?.id ?? "";
   const assistPlayerOptions =
-    selectedEventType === "goal"
+    selectedEventType === "goal" && activeEventRecipientType === "player"
       ? eventTeamPlayers.filter((player) => player.id !== activeEventPlayerId)
       : [];
+  const activeEventRecipientReady =
+    activeEventRecipientType === "coach" ? Boolean(activeEventTeamId) : Boolean(activeEventPlayerId);
   const selectedMatchEvents = selectedMatch ? getMatchEvents(data.events, selectedMatch.id) : [];
   const selectedTimerPhase = selectedMatch ? getTimerPhase(selectedMatch) : "not_started";
   const selectedMatchIsKnockout = selectedMatch ? isKnockoutStage(selectedMatch.stage) : false;
@@ -626,7 +707,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
         setMessage("Database data loaded");
       } catch (loadError) {
         if (!active) return;
-        setMessage(loadError instanceof Error ? loadError.message : "Unable to load competition data");
+        setMessage(getErrorMessage(loadError, "Unable to load competition data"));
       }
     }
 
@@ -665,7 +746,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       syncCompetitionData(nextData);
       setMessage(localMode ? "Local data refreshed" : "Database data refreshed");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to refresh data");
+      setMessage(getErrorMessage(error, "Unable to refresh data"));
     }
   }
 
@@ -777,7 +858,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       formElement.reset();
       setMessage(`${name} added`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to add team");
+      setMessage(getErrorMessage(error, "Unable to add team"));
     }
   }
 
@@ -854,7 +935,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       setEditingTeamId(null);
       setMessage(`${name} updated`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to update team");
+      setMessage(getErrorMessage(error, "Unable to update team"));
     }
   }
 
@@ -897,7 +978,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       formElement.reset();
       setMessage(`${name} added`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to add player");
+      setMessage(getErrorMessage(error, "Unable to add player"));
     }
   }
 
@@ -950,7 +1031,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       setEditingPlayerId(null);
       setMessage(`${name} updated`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to update player");
+      setMessage(getErrorMessage(error, "Unable to update player"));
     }
   }
 
@@ -1005,7 +1086,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       formElement.reset();
       setMessage("Fixture added");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to add fixture");
+      setMessage(getErrorMessage(error, "Unable to add fixture"));
     }
   }
 
@@ -1072,7 +1153,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       setEditingMatchId(null);
       setMessage("Fixture updated");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to update fixture");
+      setMessage(getErrorMessage(error, "Unable to update fixture"));
     }
   }
 
@@ -1117,7 +1198,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       formElement.reset();
       setMessage("News post added");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to add news post");
+      setMessage(getErrorMessage(error, "Unable to add news post"));
     }
   }
 
@@ -1176,7 +1257,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       setEditingNewsPostId(null);
       setMessage("News post updated");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to update news post");
+      setMessage(getErrorMessage(error, "Unable to update news post"));
     }
   }
 
@@ -1246,7 +1327,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
 
       setMessage(labels[action]);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to update match timer");
+      setMessage(getErrorMessage(error, "Unable to update match timer"));
     }
   }
 
@@ -1344,7 +1425,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
 
       setMessage(hasPenaltyScores ? "Penalty score updated" : "Penalty scores cleared");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to update penalty score");
+      setMessage(getErrorMessage(error, "Unable to update penalty score"));
     }
   }
 
@@ -1414,7 +1495,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       await refreshData();
       setMessage(goalkeeperId ? "Clean sheet credit saved" : "Clean sheet credit cleared");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to update clean sheet credit");
+      setMessage(getErrorMessage(error, "Unable to update clean sheet credit"));
     }
   }
 
@@ -1424,21 +1505,30 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
     const form = new FormData(formElement);
     const matchId = String(form.get("matchId") ?? "");
     const teamId = String(form.get("teamId") ?? "");
-    const playerId = String(form.get("playerId") ?? "");
+    const requestedRecipientType = String(
+      form.get("recipientType") ?? "player",
+    ) as EventRecipientType;
     const assistPlayerId = String(form.get("assistPlayerId") ?? "") || null;
     const type = String(form.get("type") ?? "goal") as MatchEventType;
+    const recipient = getMatchEventRecipientIds({
+      type,
+      recipientType: requestedRecipientType,
+      playerId: String(form.get("playerId") ?? ""),
+    });
     const half = Number(form.get("half")) as 1 | 2;
     const minute = Number(form.get("minute"));
     const addedTime = Number(form.get("addedTime") ?? 0);
     const isDisallowed = isScoreEventType(type) && form.get("isDisallowed") === "on";
 
-    if (!matchId || !teamId || !playerId || !Number.isFinite(minute)) {
-      setMessage("Select a match, team, player, and minute");
+    if (!matchId || !teamId || !Number.isFinite(minute)) {
+      setMessage("Select a match, team, recipient, and minute");
       return;
     }
 
     const matchForEvent = data.matches.find((match) => match.id === matchId);
-    const player = data.players.find((item) => item.id === playerId);
+    const player = recipient.playerId
+      ? data.players.find((item) => item.id === recipient.playerId)
+      : null;
     const assistPlayer = assistPlayerId
       ? data.players.find((player) => player.id === assistPlayerId)
       : null;
@@ -1453,7 +1543,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       return;
     }
 
-    if (!player) {
+    if (recipient.recipientType === "player" && (!recipient.playerId || !player)) {
       setMessage("Selected player was not found");
       return;
     }
@@ -1463,7 +1553,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       return;
     }
 
-    if (player.teamId !== teamId) {
+    if (player && player.teamId !== teamId) {
       setMessage("Choose a player from the selected team");
       return;
     }
@@ -1474,7 +1564,9 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
     }
 
     if (minute < 1 || minute > MATCH_DURATION_MINUTES) {
-      setMessage(`Event minute must be between 1 and ${MATCH_DURATION_MINUTES}`);
+      setMessage(
+        `Event minute must be between 1 and ${MATCH_DURATION_MINUTES}. Use added time separately for stoppage time.`,
+      );
       return;
     }
 
@@ -1483,7 +1575,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       return;
     }
 
-    if (type === "goal" && assistPlayerId === playerId) {
+    if (type === "goal" && assistPlayerId === recipient.playerId) {
       setMessage("A player cannot assist their own goal");
       return;
     }
@@ -1505,7 +1597,8 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
             action: "addEvent",
             matchId,
             teamId,
-            playerId,
+            playerId: recipient.playerId || null,
+            recipientType: recipient.recipientType,
             assistPlayerId,
             type,
             half,
@@ -1517,6 +1610,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
         );
         formElement.reset();
         setSelectedEventType("goal");
+        setSelectedEventRecipientType("player");
         setSelectedEventPlayerId("");
         return;
       }
@@ -1529,7 +1623,8 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
         .insert({
           match_id: matchId,
           team_id: teamId,
-          player_id: playerId,
+          player_id: recipient.playerId || null,
+          recipient_type: recipient.recipientType,
           assist_player_id: type === "goal" ? assistPlayerId : null,
           event_type: type,
           half,
@@ -1562,10 +1657,11 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
 
       formElement.reset();
       setSelectedEventType("goal");
+      setSelectedEventRecipientType("player");
       setSelectedEventPlayerId("");
       setMessage("Match event added");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to add match event");
+      setMessage(getErrorMessage(error, "Unable to add match event"));
     }
   }
 
@@ -1573,7 +1669,8 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
     setEditingEventId(matchEvent.id);
     setEditingEventTeamId(matchEvent.teamId);
     setEditingEventType(matchEvent.type);
-    setEditingEventPlayerId(matchEvent.playerId);
+    setEditingEventRecipientType(matchEvent.recipientType);
+    setEditingEventPlayerId(matchEvent.playerId ?? "");
   }
 
   async function updateMatchEvent(
@@ -1583,15 +1680,24 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const teamId = String(form.get("teamId") ?? "");
-    const playerId = String(form.get("playerId") ?? "");
+    const requestedRecipientType = String(
+      form.get("recipientType") ?? "player",
+    ) as EventRecipientType;
     const assistPlayerId = String(form.get("assistPlayerId") ?? "") || null;
     const type = String(form.get("type") ?? matchEvent.type) as MatchEventType;
+    const recipient = getMatchEventRecipientIds({
+      type,
+      recipientType: requestedRecipientType,
+      playerId: String(form.get("playerId") ?? ""),
+    });
     const half = Number(form.get("half")) as 1 | 2;
     const minute = Number(form.get("minute"));
     const addedTime = Number(form.get("addedTime") ?? 0);
     const isDisallowed = isScoreEventType(type) && form.get("isDisallowed") === "on";
     const matchForEvent = data.matches.find((match) => match.id === matchEvent.matchId);
-    const player = data.players.find((item) => item.id === playerId);
+    const player = recipient.playerId
+      ? data.players.find((item) => item.id === recipient.playerId)
+      : null;
     const assistPlayer = assistPlayerId
       ? data.players.find((item) => item.id === assistPlayerId)
       : null;
@@ -1606,8 +1712,13 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       return;
     }
 
-    if (!teamId || !playerId || !player || !Number.isInteger(minute)) {
-      setMessage("Choose a team, player, and event minute");
+    if (!teamId || !Number.isInteger(minute)) {
+      setMessage("Choose a team, recipient, and event minute");
+      return;
+    }
+
+    if (recipient.recipientType === "player" && (!recipient.playerId || !player)) {
+      setMessage("Selected player was not found");
       return;
     }
 
@@ -1616,7 +1727,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       return;
     }
 
-    if (player.teamId !== teamId) {
+    if (player && player.teamId !== teamId) {
       setMessage("Choose a player from the selected team");
       return;
     }
@@ -1627,7 +1738,9 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
     }
 
     if (minute < 1 || minute > MATCH_DURATION_MINUTES) {
-      setMessage(`Event minute must be between 1 and ${MATCH_DURATION_MINUTES}`);
+      setMessage(
+        `Event minute must be between 1 and ${MATCH_DURATION_MINUTES}. Use added time separately for stoppage time.`,
+      );
       return;
     }
 
@@ -1636,7 +1749,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       return;
     }
 
-    if (type === "goal" && assistPlayerId === playerId) {
+    if (type === "goal" && assistPlayerId === recipient.playerId) {
       setMessage("A player cannot assist their own goal");
       return;
     }
@@ -1658,7 +1771,8 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
             action: "updateMatchEvent",
             eventId: matchEvent.id,
             teamId,
-            playerId,
+            playerId: recipient.playerId || null,
+            recipientType: recipient.recipientType,
             assistPlayerId,
             type,
             half,
@@ -1679,7 +1793,8 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
         .from("match_events")
         .update({
           team_id: teamId,
-          player_id: playerId,
+          player_id: recipient.playerId || null,
+          recipient_type: recipient.recipientType,
           assist_player_id: type === "goal" ? assistPlayerId : null,
           event_type: type,
           half,
@@ -1714,7 +1829,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       setEditingEventId(null);
       setMessage("Match event updated");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to update match event");
+      setMessage(getErrorMessage(error, "Unable to update match event"));
     }
   }
 
@@ -1774,7 +1889,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       await refreshData();
       setMessage(assistPlayerId ? "Assist updated" : "Assist cleared");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to update assist");
+      setMessage(getErrorMessage(error, "Unable to update assist"));
     }
   }
 
@@ -1828,7 +1943,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
 
       setMessage(isDisallowed ? "Goal disallowed" : "Goal restored");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to update match event");
+      setMessage(getErrorMessage(error, "Unable to update match event"));
     }
   }
 
@@ -1858,7 +1973,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       await refreshData();
       setMessage(`${team.name} deleted`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to delete team");
+      setMessage(getErrorMessage(error, "Unable to delete team"));
     }
   }
 
@@ -1888,7 +2003,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       await refreshData();
       setMessage(`${player.name} deleted`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to delete player");
+      setMessage(getErrorMessage(error, "Unable to delete player"));
     }
   }
 
@@ -1922,7 +2037,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       await refreshData();
       setMessage(`${label} deleted`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to delete fixture");
+      setMessage(getErrorMessage(error, "Unable to delete fixture"));
     }
   }
 
@@ -1958,7 +2073,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       await refreshData();
       setMessage("Match event deleted");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to delete match event");
+      setMessage(getErrorMessage(error, "Unable to delete match event"));
     }
   }
 
@@ -1988,7 +2103,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       await refreshData();
       setMessage("News post deleted");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to delete news post");
+      setMessage(getErrorMessage(error, "Unable to delete news post"));
     }
   }
 
@@ -2159,7 +2274,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       <div className="mt-6 flex flex-wrap gap-2">
         {[
           { id: "teams", label: "Teams", icon: Shield },
-          { id: "players", label: "Players", icon: Shirt },
+          { id: "players", label: "Roster", icon: Shirt },
           { id: "matches", label: "Matches", icon: CalendarPlus },
           { id: "events", label: "Match Events", icon: ClipboardList },
           { id: "news", label: "News", icon: Newspaper },
@@ -2324,163 +2439,172 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
 
       {activeTab === "players" && (
         <section className="mt-6 grid gap-6 lg:grid-cols-[0.75fr_1.25fr]">
-          <form onSubmit={addPlayer} className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
-            <h2 className="text-2xl font-black text-zinc-950">Add Player</h2>
-            <div className="mt-5 grid gap-4">
-              <label className="grid gap-2 text-sm font-bold text-zinc-700" htmlFor="player-name">
-                Player name
-                <input
-                  id="player-name"
-                  name="name"
-                  required
-                  className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
-                />
-              </label>
-              <label className="grid gap-2 text-sm font-bold text-zinc-700" htmlFor="player-team">
-                Team
-                <select
-                  id="player-team"
-                  name="teamId"
-                  required
-                  value={selectedPlayerTeamId}
-                  onChange={(event) => setSelectedPlayerTeamId(event.target.value)}
-                  className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+          <div className="space-y-6">
+            <form onSubmit={addPlayer} className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
+              <h2 className="text-2xl font-black text-zinc-950">Add Player</h2>
+              <div className="mt-5 grid gap-4">
+                <label className="grid gap-2 text-sm font-bold text-zinc-700" htmlFor="player-name">
+                  Player name
+                  <input
+                    id="player-name"
+                    name="name"
+                    required
+                    className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                  />
+                </label>
+                <label className="grid gap-2 text-sm font-bold text-zinc-700" htmlFor="player-team">
+                  Team
+                  <select
+                    id="player-team"
+                    name="teamId"
+                    required
+                    value={selectedPlayerTeamId}
+                    onChange={(event) => setSelectedPlayerTeamId(event.target.value)}
+                    className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                  >
+                    {data.teams.map((team) => (
+                      <option key={team.id} value={team.id}>
+                        {team.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="submit"
+                  disabled={editBlocked || data.teams.length === 0}
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-black text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-45"
                 >
-                  {data.teams.map((team) => (
-                    <option key={team.id} value={team.id}>
-                      {team.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button
-                type="submit"
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-black text-white transition hover:bg-emerald-800"
-              >
-                <CirclePlus className="h-4 w-4" aria-hidden="true" />
-                Add player
-              </button>
-            </div>
-          </form>
+                  <CirclePlus className="h-4 w-4" aria-hidden="true" />
+                  Add player
+                </button>
+              </div>
+            </form>
+          </div>
 
-          <section className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
-            <h2 className="text-2xl font-black text-zinc-950">Squads</h2>
-            <div className="mt-5 divide-y divide-zinc-100">
-              {data.players.map((player) => {
-                const team = data.teams.find((item) => item.id === player.teamId);
-                const stats = playerStats.find((item) => item.player.id === player.id);
-                const isEditing = editingPlayerId === player.id;
-                const hasRecordedActivity = playerHasRecordedActivity(data, player.id);
+          <div className="space-y-6">
+            <section className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
+              <h2 className="text-2xl font-black text-zinc-950">Squads</h2>
+              <div className="mt-5 divide-y divide-zinc-100">
+                {data.players.length > 0 ? (
+                  data.players.map((player) => {
+                    const team = data.teams.find((item) => item.id === player.teamId);
+                    const stats = playerStats.find((item) => item.player.id === player.id);
+                    const isEditing = editingPlayerId === player.id;
+                    const hasRecordedActivity = playerHasRecordedActivity(data, player.id);
 
-                return (
-                  <div key={player.id} className="py-3">
-                    {isEditing ? (
-                      <form
-                        onSubmit={(event) => updatePlayer(event, player)}
-                        className="grid gap-3 rounded-md border border-emerald-200 bg-emerald-50/45 p-3"
-                      >
-                        <div className="min-w-0">
-                          <p className="font-extrabold text-zinc-950">Edit player</p>
-                          {hasRecordedActivity ? (
-                            <p className="mt-1 text-xs font-bold text-amber-800">
-                              Team is locked because this player has match activity.
-                            </p>
-                          ) : null}
-                        </div>
-                        <label
-                          className="grid gap-2 text-sm font-bold text-zinc-700"
-                          htmlFor={`edit-player-name-${player.id}`}
-                        >
-                          Player name
-                          <input
-                            id={`edit-player-name-${player.id}`}
-                            name="name"
-                            defaultValue={player.name}
-                            required
-                            className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
-                          />
-                        </label>
-                        {hasRecordedActivity ? (
-                          <input type="hidden" name="teamId" value={player.teamId} />
-                        ) : null}
-                        <label
-                          className="grid gap-2 text-sm font-bold text-zinc-700"
-                          htmlFor={`edit-player-team-${player.id}`}
-                        >
-                          Team
-                          <select
-                            id={`edit-player-team-${player.id}`}
-                            name="teamId"
-                            defaultValue={player.teamId}
-                            disabled={hasRecordedActivity}
-                            required
-                            className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-500"
+                    return (
+                      <div key={player.id} className="py-3">
+                        {isEditing ? (
+                          <form
+                            onSubmit={(event) => updatePlayer(event, player)}
+                            className="grid gap-3 rounded-md border border-emerald-200 bg-emerald-50/45 p-3"
                           >
-                            {data.teams.map((item) => (
-                              <option key={item.id} value={item.id}>
-                                {item.name}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            type="submit"
-                            disabled={editBlocked}
-                            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-black text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-45"
-                          >
-                            <Save className="h-4 w-4" aria-hidden="true" />
-                            Save player
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setEditingPlayerId(null)}
-                            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-4 text-sm font-black text-zinc-700 transition hover:border-emerald-300 hover:text-emerald-800"
-                          >
-                            <X className="h-4 w-4" aria-hidden="true" />
-                            Cancel
-                          </button>
-                        </div>
-                      </form>
-                    ) : (
-                      <div className="grid grid-cols-[1fr_auto_auto_auto] gap-3">
-                        <div className="min-w-0">
-                          <p className="truncate font-extrabold text-zinc-950">{player.name}</p>
-                          <p className="truncate text-sm font-semibold text-zinc-500">
-                            {team?.name ?? "No team"}
-                          </p>
-                        </div>
-                        <div className="text-right text-xs font-bold text-zinc-500">
-                          <p>{stats?.goals ?? 0} G</p>
-                          <p>{stats?.assists ?? 0} A</p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setEditingPlayerId(player.id)}
-                          disabled={editBlocked}
-                          className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-zinc-300 bg-white text-zinc-700 transition hover:border-emerald-300 hover:text-emerald-800 disabled:cursor-not-allowed disabled:opacity-45"
-                          title={`Edit ${player.name}`}
-                          aria-label={`Edit ${player.name}`}
-                        >
-                          <Pencil className="h-4 w-4" aria-hidden="true" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => deletePlayer(player)}
-                          disabled={editBlocked}
-                          className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-red-200 bg-white text-red-600 transition hover:bg-red-50 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-45"
-                          title={`Delete ${player.name}`}
-                          aria-label={`Delete ${player.name}`}
-                        >
-                          <Trash2 className="h-4 w-4" aria-hidden="true" />
-                        </button>
+                            <div className="min-w-0">
+                              <p className="font-extrabold text-zinc-950">Edit player</p>
+                              {hasRecordedActivity ? (
+                                <p className="mt-1 text-xs font-bold text-amber-800">
+                                  Team is locked because this player has match activity.
+                                </p>
+                              ) : null}
+                            </div>
+                            <label
+                              className="grid gap-2 text-sm font-bold text-zinc-700"
+                              htmlFor={`edit-player-name-${player.id}`}
+                            >
+                              Player name
+                              <input
+                                id={`edit-player-name-${player.id}`}
+                                name="name"
+                                defaultValue={player.name}
+                                required
+                                className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                              />
+                            </label>
+                            {hasRecordedActivity ? (
+                              <input type="hidden" name="teamId" value={player.teamId} />
+                            ) : null}
+                            <label
+                              className="grid gap-2 text-sm font-bold text-zinc-700"
+                              htmlFor={`edit-player-team-${player.id}`}
+                            >
+                              Team
+                              <select
+                                id={`edit-player-team-${player.id}`}
+                                name="teamId"
+                                defaultValue={player.teamId}
+                                disabled={hasRecordedActivity}
+                                required
+                                className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-500"
+                              >
+                                {data.teams.map((item) => (
+                                  <option key={item.id} value={item.id}>
+                                    {item.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="submit"
+                                disabled={editBlocked}
+                                className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-black text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-45"
+                              >
+                                <Save className="h-4 w-4" aria-hidden="true" />
+                                Save player
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setEditingPlayerId(null)}
+                                className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-4 text-sm font-black text-zinc-700 transition hover:border-emerald-300 hover:text-emerald-800"
+                              >
+                                <X className="h-4 w-4" aria-hidden="true" />
+                                Cancel
+                              </button>
+                            </div>
+                          </form>
+                        ) : (
+                          <div className="grid grid-cols-[1fr_auto_auto_auto] gap-3">
+                            <div className="min-w-0">
+                              <p className="truncate font-extrabold text-zinc-950">{player.name}</p>
+                              <p className="truncate text-sm font-semibold text-zinc-500">
+                                {team?.name ?? "No team"}
+                              </p>
+                            </div>
+                            <div className="text-right text-xs font-bold text-zinc-500">
+                              <p>{stats?.goals ?? 0} G</p>
+                              <p>{stats?.assists ?? 0} A</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setEditingPlayerId(player.id)}
+                              disabled={editBlocked}
+                              className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-zinc-300 bg-white text-zinc-700 transition hover:border-emerald-300 hover:text-emerald-800 disabled:cursor-not-allowed disabled:opacity-45"
+                              title={`Edit ${player.name}`}
+                              aria-label={`Edit ${player.name}`}
+                            >
+                              <Pencil className="h-4 w-4" aria-hidden="true" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => deletePlayer(player)}
+                              disabled={editBlocked}
+                              className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-red-200 bg-white text-red-600 transition hover:bg-red-50 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-45"
+                              title={`Delete ${player.name}`}
+                              aria-label={`Delete ${player.name}`}
+                            >
+                              <Trash2 className="h-4 w-4" aria-hidden="true" />
+                            </button>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </section>
+                    );
+                  })
+                ) : (
+                  <p className="text-sm text-zinc-500">No players added yet.</p>
+                )}
+              </div>
+            </section>
+          </div>
         </section>
       )}
 
@@ -3138,7 +3262,13 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                   id="event-type"
                   name="type"
                   value={selectedEventType}
-                  onChange={(event) => setSelectedEventType(event.target.value as MatchEventType)}
+                  onChange={(event) => {
+                    const nextType = event.target.value as MatchEventType;
+                    setSelectedEventType(nextType);
+                    if (!isCardEventType(nextType)) {
+                      setSelectedEventRecipientType("player");
+                    }
+                  }}
                   className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
                 >
                   {eventTypes.map((type) => (
@@ -3154,7 +3284,10 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                   id="event-team"
                   name="teamId"
                   value={activeEventTeamId}
-                  onChange={(event) => setSelectedEventTeamId(event.target.value)}
+                  onChange={(event) => {
+                    setSelectedEventTeamId(event.target.value);
+                    setSelectedEventPlayerId("");
+                  }}
                   className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
                 >
                   {selectedEventTeamOptions.map((team) => (
@@ -3164,29 +3297,70 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                   ))}
                 </select>
               </label>
-              <label className="grid gap-2 text-sm font-bold text-zinc-700" htmlFor="event-player">
-                Player
-                <select
-                  id="event-player"
-                  name="playerId"
-                  value={activeEventPlayerId}
-                  onChange={(event) => setSelectedEventPlayerId(event.target.value)}
-                  required
-                  className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+              {isCardEventType(selectedEventType) ? (
+                <label
+                  className="grid gap-2 text-sm font-bold text-zinc-700"
+                  htmlFor="event-recipient-type"
                 >
-                  {eventTeamPlayers.map((player) => (
-                    <option key={player.id} value={player.id}>
-                      {player.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  Recipient
+                  <select
+                    id="event-recipient-type"
+                    name="recipientType"
+                    value={activeEventRecipientType}
+                    onChange={(event) =>
+                      setSelectedEventRecipientType(event.target.value as EventRecipientType)
+                    }
+                    className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                  >
+                    <option value="player">Player</option>
+                    <option value="coach">Coach</option>
+                  </select>
+                </label>
+              ) : (
+                <input type="hidden" name="recipientType" value="player" />
+              )}
+              {activeEventRecipientType === "coach" ? (
+                <div className="grid gap-2 text-sm font-bold text-zinc-700">
+                  Recipient
+                  <input type="hidden" name="playerId" value="" />
+                  <div className="flex min-h-11 items-center rounded-md border border-zinc-300 bg-zinc-50 px-3 text-zinc-950">
+                    Coach
+                  </div>
+                </div>
+              ) : (
+                <label className="grid gap-2 text-sm font-bold text-zinc-700" htmlFor="event-player">
+                  Player
+                  <select
+                    id="event-player"
+                    name="playerId"
+                    value={activeEventPlayerId}
+                    onChange={(event) => setSelectedEventPlayerId(event.target.value)}
+                    required
+                    className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                  >
+                    {eventTeamPlayers.length > 0 ? (
+                      eventTeamPlayers.map((player) => (
+                        <option key={player.id} value={player.id}>
+                          {player.name}
+                        </option>
+                      ))
+                    ) : (
+                      <option value="">No players</option>
+                    )}
+                  </select>
+                </label>
+              )}
               <label className="grid gap-2 text-sm font-bold text-zinc-700" htmlFor="assist-player">
                 Assist
                 <select
+                  key={`${activeEventTeamId}-${activeEventPlayerId}-${selectedEventType}`}
                   id="assist-player"
                   name="assistPlayerId"
-                  disabled={selectedEventType !== "goal" || assistPlayerOptions.length === 0}
+                  disabled={
+                    selectedEventType !== "goal" ||
+                    activeEventRecipientType !== "player" ||
+                    assistPlayerOptions.length === 0
+                  }
                   className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-400"
                 >
                   <option value="">No assist</option>
@@ -3231,7 +3405,8 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
               </p>
               <button
                 type="submit"
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-black text-white transition hover:bg-emerald-800"
+                disabled={editBlocked || !activeEventRecipientReady}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-black text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-45"
               >
                 <Trophy className="h-4 w-4" aria-hidden="true" />
                 Add event
@@ -3321,19 +3496,27 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                   const editingEventPlayers = data.players.filter(
                     (player) => player.teamId === activeEditingEventTeamId,
                   );
+                  const activeEditingEventRecipientType = getEventRecipientType(
+                    editingEventType,
+                    editingEventRecipientType,
+                  );
                   const activeEditingEventPlayerId = editingEventPlayers.some(
                     (player) => player.id === editingEventPlayerId,
                   )
                     ? editingEventPlayerId
                     : editingEventPlayers.some((player) => player.id === matchEvent.playerId)
-                      ? matchEvent.playerId
+                      ? matchEvent.playerId ?? ""
                       : editingEventPlayers[0]?.id ?? "";
                   const editingAssistOptions =
-                    editingEventType === "goal"
+                    editingEventType === "goal" && activeEditingEventRecipientType === "player"
                       ? editingEventPlayers.filter(
                           (player) => player.id !== activeEditingEventPlayerId,
                         )
                       : [];
+                  const activeEditingEventRecipientReady =
+                    activeEditingEventRecipientType === "coach"
+                      ? Boolean(activeEditingEventTeamId)
+                      : Boolean(activeEditingEventPlayerId);
                   const activeEditingAssistPlayerId =
                     editingAssistOptions.some(
                       (player) => player.id === matchEvent.assistPlayerId,
@@ -3348,7 +3531,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                         className="grid gap-3 rounded-md border border-emerald-200 bg-white p-3"
                       >
                         <p className="font-extrabold text-zinc-950">Edit match event</p>
-                        <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="grid gap-3 sm:grid-cols-3">
                           <label
                             className="grid gap-2 text-sm font-bold text-zinc-700"
                             htmlFor={`edit-event-type-${matchEvent.id}`}
@@ -3358,9 +3541,13 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                               id={`edit-event-type-${matchEvent.id}`}
                               name="type"
                               value={editingEventType}
-                              onChange={(event) =>
-                                setEditingEventType(event.target.value as MatchEventType)
-                              }
+                              onChange={(event) => {
+                                const nextType = event.target.value as MatchEventType;
+                                setEditingEventType(nextType);
+                                if (!isCardEventType(nextType)) {
+                                  setEditingEventRecipientType("player");
+                                }
+                              }}
                               className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
                             >
                               {eventTypes.map((type) => (
@@ -3393,32 +3580,66 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                               ))}
                             </select>
                           </label>
+                          {isCardEventType(editingEventType) ? (
+                            <label
+                              className="grid gap-2 text-sm font-bold text-zinc-700"
+                              htmlFor={`edit-event-recipient-type-${matchEvent.id}`}
+                            >
+                              Recipient
+                              <select
+                                id={`edit-event-recipient-type-${matchEvent.id}`}
+                                name="recipientType"
+                                value={activeEditingEventRecipientType}
+                                onChange={(event) =>
+                                  setEditingEventRecipientType(
+                                    event.target.value as EventRecipientType,
+                                  )
+                                }
+                                className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                              >
+                                <option value="player">Player</option>
+                                <option value="coach">Coach</option>
+                              </select>
+                            </label>
+                          ) : (
+                            <input type="hidden" name="recipientType" value="player" />
+                          )}
                         </div>
                         <div className="grid gap-3 sm:grid-cols-2">
-                          <label
-                            className="grid gap-2 text-sm font-bold text-zinc-700"
-                            htmlFor={`edit-event-player-${matchEvent.id}`}
-                          >
-                            Player
-                            <select
-                              id={`edit-event-player-${matchEvent.id}`}
-                              name="playerId"
-                              value={activeEditingEventPlayerId}
-                              onChange={(event) => setEditingEventPlayerId(event.target.value)}
-                              required
-                              className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                          {activeEditingEventRecipientType === "coach" ? (
+                            <div className="grid gap-2 text-sm font-bold text-zinc-700">
+                              Recipient
+                              <input type="hidden" name="playerId" value="" />
+                              <div className="flex min-h-11 items-center rounded-md border border-zinc-300 bg-zinc-50 px-3 text-zinc-950">
+                                Coach
+                              </div>
+                            </div>
+                          ) : (
+                            <label
+                              className="grid gap-2 text-sm font-bold text-zinc-700"
+                              htmlFor={`edit-event-player-${matchEvent.id}`}
                             >
-                              {editingEventPlayers.length > 0 ? (
-                                editingEventPlayers.map((player) => (
-                                  <option key={player.id} value={player.id}>
-                                    {player.name}
-                                  </option>
-                                ))
-                              ) : (
-                                <option value="">No players</option>
-                              )}
-                            </select>
-                          </label>
+                              Player
+                              <select
+                                id={`edit-event-player-${matchEvent.id}`}
+                                name="playerId"
+                                value={activeEditingEventPlayerId}
+                                onChange={(event) => setEditingEventPlayerId(event.target.value)}
+                                required
+                                className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                              >
+                                {editingEventPlayers.length > 0 ? (
+                                  editingEventPlayers.map((player) => (
+                                    <option key={player.id} value={player.id}>
+                                      {player.name}
+                                    </option>
+                                  ))
+                                ) : (
+                                  <option value="">No players</option>
+                                )}
+                              </select>
+                            </label>
+                          )}
                           <label
                             className="grid gap-2 text-sm font-bold text-zinc-700"
                             htmlFor={`edit-assist-player-${matchEvent.id}`}
@@ -3430,7 +3651,9 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                               name="assistPlayerId"
                               defaultValue={activeEditingAssistPlayerId}
                               disabled={
-                                editingEventType !== "goal" || editingAssistOptions.length === 0
+                                editingEventType !== "goal" ||
+                                activeEditingEventRecipientType !== "player" ||
+                                editingAssistOptions.length === 0
                               }
                               className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-400"
                             >
@@ -3490,7 +3713,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                         <div className="flex flex-wrap gap-2">
                           <button
                             type="submit"
-                            disabled={editBlocked || editingEventPlayers.length === 0}
+                            disabled={editBlocked || !activeEditingEventRecipientReady}
                             className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-black text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-45"
                           >
                             <Save className="h-4 w-4" aria-hidden="true" />

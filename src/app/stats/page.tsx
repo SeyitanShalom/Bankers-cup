@@ -1,12 +1,21 @@
-import { CleanSheetLeaders, PlayerLeaderList } from "@/components/stat-leaders";
+import {
+  CleanSheetLeaders,
+  DisciplineLeaderList,
+  PlayerLeaderList,
+} from "@/components/stat-leaders";
 import { getCompetitionData } from "@/lib/data";
-import { calculateCleanSheets, calculatePlayerStats } from "@/lib/tournament";
+import {
+  calculateCleanSheets,
+  calculateDisciplineStats,
+  calculatePlayerStats,
+} from "@/lib/tournament";
 
 export const dynamic = "force-dynamic";
 
 export default async function StatsPage() {
   const data = await getCompetitionData();
   const playerStats = calculatePlayerStats(data);
+  const disciplineStats = calculateDisciplineStats(data);
   const cleanSheets = calculateCleanSheets(data);
 
   return (
@@ -22,8 +31,8 @@ export default async function StatsPage() {
         <PlayerLeaderList title="Top Scorers" rows={playerStats} valueKey="goals" />
         <PlayerLeaderList title="Assists" rows={playerStats} valueKey="assists" />
         <CleanSheetLeaders rows={cleanSheets} />
-        <PlayerLeaderList title="Yellow Cards" rows={playerStats} valueKey="yellowCards" />
-        <PlayerLeaderList title="Red Cards" rows={playerStats} valueKey="redCards" />
+        <DisciplineLeaderList title="Yellow Cards" rows={disciplineStats} valueKey="yellowCards" />
+        <DisciplineLeaderList title="Red Cards" rows={disciplineStats} valueKey="redCards" />
       </div>
     </main>
   );

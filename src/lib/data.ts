@@ -5,6 +5,7 @@ import type {
   CompetitionData,
   Match,
   MatchEvent,
+  MatchEventRecipientType,
   MatchEventType,
   MatchStage,
   MatchStatus,
@@ -55,7 +56,9 @@ type MatchEventRow = {
   id: string;
   match_id: string;
   team_id: string;
-  player_id: string;
+  player_id: string | null;
+  recipient_type?: MatchEventRecipientType | null;
+  coach_id?: string | null;
   assist_player_id: string | null;
   event_type: MatchEventType;
   half: 1 | 2;
@@ -130,12 +133,23 @@ function mapMatch(row: MatchRow): Match {
   };
 }
 
+function getRecipientType(row: MatchEventRow): MatchEventRecipientType {
+  if (row.recipient_type === "coach" || row.coach_id) {
+    return "coach";
+  }
+
+  return "player";
+}
+
 function mapEvent(row: MatchEventRow): MatchEvent {
+  const recipientType = getRecipientType(row);
+
   return {
     id: row.id,
     matchId: row.match_id,
     teamId: row.team_id,
-    playerId: row.player_id,
+    playerId: recipientType === "player" ? row.player_id : null,
+    recipientType,
     assistPlayerId: row.assist_player_id,
     type: row.event_type,
     half: row.half,
