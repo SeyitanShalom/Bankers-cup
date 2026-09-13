@@ -309,6 +309,10 @@ function getInitialEventTeamId(data: CompetitionData) {
   return match?.homeTeamId ?? data.teams[0]?.id ?? "";
 }
 
+function getInitialPlayerTeamId(data: CompetitionData) {
+  return data.teams[0]?.id ?? "";
+}
+
 function getAdminScoreValue(match: Match) {
   const showScore =
     match.status === "live" ||
@@ -457,6 +461,9 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
   );
   const [editingTeamId, setEditingTeamId] = useState<string | null>(null);
   const [editingPlayerId, setEditingPlayerId] = useState<string | null>(null);
+  const [selectedPlayerTeamId, setSelectedPlayerTeamId] = useState(() =>
+    getInitialPlayerTeamId(initialData),
+  );
   const [editingMatchId, setEditingMatchId] = useState<string | null>(null);
   const [editingNewsPostId, setEditingNewsPostId] = useState<string | null>(null);
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
@@ -544,6 +551,11 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       nextData.teams.some((team) => team.id === current)
         ? current
         : getInitialEventTeamId(nextData),
+    );
+    setSelectedPlayerTeamId((current) =>
+      nextData.teams.some((team) => team.id === current)
+        ? current
+        : getInitialPlayerTeamId(nextData),
     );
     setEditingTeamId((current) =>
       current && nextData.teams.some((team) => team.id === current) ? current : null,
@@ -2330,6 +2342,8 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                   id="player-team"
                   name="teamId"
                   required
+                  value={selectedPlayerTeamId}
+                  onChange={(event) => setSelectedPlayerTeamId(event.target.value)}
                   className="min-h-11 rounded-md border border-zinc-300 bg-white px-3 text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
                 >
                   {data.teams.map((team) => (
