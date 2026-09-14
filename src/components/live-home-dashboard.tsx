@@ -95,7 +95,7 @@ export function LiveHomeDashboard({ initialData }: LiveHomeDashboardProps) {
               {heroBadge}
             </p>
             <h1 className="animate-rise-in motion-delay-1 max-w-3xl text-5xl font-black leading-none text-white sm:text-6xl lg:text-7xl">
-              Bankers Cup
+              Bankers' Cup
             </h1>
             <p className="animate-rise-in motion-delay-2 mt-5 max-w-2xl text-base font-semibold leading-7 text-zinc-100 sm:text-lg sm:leading-8">
               Fourteen banking teams chase one table, eight knockout places, and a final run under the lights.
