@@ -66,9 +66,6 @@ export function LiveMatchTimer({ match, variant = "compact" }: LiveMatchTimerPro
         </div>
         <div className="text-right">
           <p className="text-5xl font-black leading-none">{snapshot.label}</p>
-          <p className="mt-2 text-xs font-bold uppercase tracking-wide text-zinc-300">
-            Synced from admin
-          </p>
         </div>
       </div>
       <div className="mt-5 h-2 overflow-hidden rounded-full bg-white/15">
