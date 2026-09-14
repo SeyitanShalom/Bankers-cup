@@ -1,4 +1,5 @@
 "use client";
+import Image from "next/image";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -9,7 +10,6 @@ import {
   Newspaper,
   Shield,
   Table2,
-  Trophy,
 } from "lucide-react";
 
 const navItems = [
@@ -40,7 +40,7 @@ export function SiteHeader() {
     <header className="animate-drop-in fixed inset-x-0 top-0 z-40 border-b border-zinc-200 bg-white/95 backdrop-blur">
       <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
         <Link href="/" className="group flex items-center gap-3">
-          <span className="grid h-10 w-10 place-items-center rounded-md bg-zinc-950 text-white transition duration-200 group-hover:rotate-3 group-hover:bg-emerald-800">
+          {/* <span className="grid h-10 w-10 place-items-center rounded-md bg-zinc-950 text-white transition duration-200 group-hover:rotate-3 group-hover:bg-emerald-800">
             <Trophy className="h-5 w-5" aria-hidden="true" />
           </span>
           <span>
@@ -50,7 +50,30 @@ export function SiteHeader() {
             <span className="block text-xs font-bold text-emerald-700">
               Football Competition
             </span>
-          </span>
+          </span> */}
+          <div className="flex items-center gap-2">
+            <Image
+              src="/CBN logo.png"
+              alt="Bankers Cup Logo"
+              width={35}
+              height={35}
+            />
+            <div className="w-[1px] h-8 bg-gray-900"></div>
+            <Image
+              src="/Bankers' Committee logo (1).png"
+              alt="Bankers Cup Logo"
+              width={35}
+              height={35}
+            />
+            <span>
+              <span className="block text-base font-black leading-tight text-zinc-950">
+                Akure Bankers&apos; Cup
+              </span>
+              <span className="block text-xs font-bold text-emerald-700">
+                Football Competition
+              </span>
+            </span>
+          </div>
         </Link>
 
         <nav

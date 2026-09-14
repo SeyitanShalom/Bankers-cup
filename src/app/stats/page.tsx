@@ -28,11 +28,21 @@ export default async function StatsPage() {
       </div>
 
       <div className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-        <PlayerLeaderList title="Top Scorers" rows={playerStats} valueKey="goals" />
-        <PlayerLeaderList title="Assists" rows={playerStats} valueKey="assists" />
-        <CleanSheetLeaders rows={cleanSheets} />
-        <DisciplineLeaderList title="Yellow Cards" rows={disciplineStats} valueKey="yellowCards" />
-        <DisciplineLeaderList title="Red Cards" rows={disciplineStats} valueKey="redCards" />
+        <PlayerLeaderList title="Top Scorers" rows={playerStats} valueKey="goals" limit={null} />
+        <PlayerLeaderList title="Assists" rows={playerStats} valueKey="assists" limit={null} />
+        <CleanSheetLeaders rows={cleanSheets} limit={null} />
+        <DisciplineLeaderList
+          title="Yellow Cards"
+          rows={disciplineStats}
+          valueKey="yellowCards"
+          limit={null}
+        />
+        <DisciplineLeaderList
+          title="Red Cards"
+          rows={disciplineStats}
+          valueKey="redCards"
+          limit={null}
+        />
       </div>
     </main>
   );

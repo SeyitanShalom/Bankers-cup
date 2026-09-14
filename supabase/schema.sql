@@ -574,6 +574,8 @@ on storage.objects for delete
 to authenticated
 using (bucket_id = 'team-logos' and public.is_admin());
 
+notify pgrst, 'reload schema';
+
 -- After creating your Supabase Auth user, run this with your real email:
 -- insert into public.admin_users (user_id, email)
 -- select id, email from auth.users where email = 'you@example.com'

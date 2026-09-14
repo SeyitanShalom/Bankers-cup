@@ -6,6 +6,7 @@ type PlayerLeaderListProps = {
   rows: PlayerStatRow[];
   valueKey: "goals" | "assists" | "yellowCards" | "redCards";
   emptyLabel?: string;
+  limit?: number | null;
 };
 
 export function PlayerLeaderList({
@@ -13,14 +14,15 @@ export function PlayerLeaderList({
   rows,
   valueKey,
   emptyLabel = "No records yet",
+  limit = 5,
 }: PlayerLeaderListProps) {
-  const leaders = [...rows]
+  const rankedRows = [...rows]
     .filter((row) => row[valueKey] > 0)
     .sort((a, b) => {
       if (b[valueKey] !== a[valueKey]) return b[valueKey] - a[valueKey];
       return a.player.name.localeCompare(b.player.name);
-    })
-    .slice(0, 5);
+    });
+  const leaders = limit === null ? rankedRows : rankedRows.slice(0, limit);
 
   return (
     <section className="animate-rise-in motion-card rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
@@ -55,8 +57,15 @@ export function PlayerLeaderList({
   );
 }
 
-export function CleanSheetLeaders({ rows }: { rows: CleanSheetRow[] }) {
-  const leaders = rows.filter((row) => row.cleanSheets > 0).slice(0, 5);
+export function CleanSheetLeaders({
+  rows,
+  limit = 5,
+}: {
+  rows: CleanSheetRow[];
+  limit?: number | null;
+}) {
+  const rankedRows = rows.filter((row) => row.cleanSheets > 0);
+  const leaders = limit === null ? rankedRows : rankedRows.slice(0, limit);
 
   return (
     <section className="animate-rise-in motion-card rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
@@ -96,19 +105,21 @@ export function DisciplineLeaderList({
   rows,
   valueKey,
   emptyLabel = "No records yet",
+  limit = 5,
 }: {
   title: string;
   rows: DisciplineStatRow[];
   valueKey: "yellowCards" | "redCards";
   emptyLabel?: string;
+  limit?: number | null;
 }) {
-  const leaders = [...rows]
+  const rankedRows = [...rows]
     .filter((row) => row[valueKey] > 0)
     .sort((a, b) => {
       if (b[valueKey] !== a[valueKey]) return b[valueKey] - a[valueKey];
       return a.participant.name.localeCompare(b.participant.name);
-    })
-    .slice(0, 5);
+    });
+  const leaders = limit === null ? rankedRows : rankedRows.slice(0, limit);
 
   return (
     <section className="animate-rise-in motion-card rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
