@@ -2108,8 +2108,8 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
   }
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      <section className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm">
+    <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <section className="overflow-hidden rounded-lg border border-zinc-200 bg-white p-4 shadow-sm sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-5">
           <div>
             <p className="text-sm font-black uppercase tracking-wide text-emerald-700">
@@ -2271,7 +2271,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
 
       {!adminLocked ? (
         <>
-      <div className="mt-6 flex flex-wrap gap-2">
+      <div className="mt-6 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
         {[
           { id: "teams", label: "Teams", icon: Shield },
           { id: "players", label: "Roster", icon: Shirt },
@@ -2286,7 +2286,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
               key={tab.id}
               type="button"
               onClick={() => setActiveTab(tab.id as Tab)}
-              className={`inline-flex min-h-11 items-center gap-2 rounded-md px-4 text-sm font-black transition ${
+              className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-md px-3 text-sm font-black transition sm:px-4 ${
                 activeTab === tab.id
                   ? "bg-zinc-950 text-white"
                   : "border border-zinc-300 bg-white text-zinc-700 hover:border-emerald-300 hover:text-emerald-800"
@@ -2563,14 +2563,14 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                             </div>
                           </form>
                         ) : (
-                          <div className="grid grid-cols-[1fr_auto_auto_auto] gap-3">
-                            <div className="min-w-0">
+                          <div className="flex flex-wrap items-start gap-3">
+                            <div className="min-w-0 flex-1 basis-36">
                               <p className="truncate font-extrabold text-zinc-950">{player.name}</p>
                               <p className="truncate text-sm font-semibold text-zinc-500">
                                 {team?.name ?? "No team"}
                               </p>
                             </div>
-                            <div className="text-right text-xs font-bold text-zinc-500">
+                            <div className="shrink-0 text-right text-xs font-bold text-zinc-500">
                               <p>{stats?.goals ?? 0} G</p>
                               <p>{stats?.assists ?? 0} A</p>
                             </div>
@@ -3077,7 +3077,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                     <p className="mt-1 text-sm font-semibold text-zinc-500">
                       {selectedMatch.venue}
                     </p>
-                    <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-3 rounded-md border border-zinc-200 bg-white p-3">
+                    <div className="mt-4 grid gap-3 rounded-md border border-zinc-200 bg-white p-3 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-center">
                       <div className="min-w-0">
                         <p className="text-xs font-black uppercase tracking-wide text-zinc-500">
                           Home
@@ -3086,7 +3086,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                           {selectedMatchHome.name}
                         </p>
                       </div>
-                      <div className="grid min-w-20 place-items-center rounded-md bg-zinc-950 px-4 py-2 text-white">
+                      <div className="grid min-w-16 place-items-center rounded-md bg-zinc-950 px-3 py-2 text-white sm:min-w-20 sm:px-4">
                         <p className="text-2xl font-black">{getAdminScoreValue(selectedMatch)}</p>
                         {hasPenaltyScore(selectedMatch) ? (
                           <p className="text-xs font-bold text-zinc-300">
@@ -3094,7 +3094,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                           </p>
                         ) : null}
                       </div>
-                      <div className="min-w-0 text-right">
+                      <div className="min-w-0 sm:text-right">
                         <p className="text-xs font-black uppercase tracking-wide text-zinc-500">
                           Away
                         </p>
@@ -3733,12 +3733,12 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                   }
 
                   return (
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="grid w-full gap-2 sm:flex sm:flex-wrap sm:items-center">
                       <button
                         type="button"
                         onClick={() => startEditingMatchEvent(matchEvent)}
                         disabled={editBlocked}
-                        className="inline-flex min-h-9 items-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-xs font-black text-zinc-700 transition hover:border-emerald-300 hover:text-emerald-800 disabled:cursor-not-allowed disabled:opacity-45"
+                        className="inline-flex min-h-9 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-xs font-black text-zinc-700 transition hover:border-emerald-300 hover:text-emerald-800 disabled:cursor-not-allowed disabled:opacity-45"
                       >
                         <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
                         Edit
@@ -3747,14 +3747,14 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                         <form
                           key={`assist-${matchEvent.id}-${matchEvent.assistPlayerId ?? "none"}`}
                           onSubmit={(event) => updateEventAssist(event, matchEvent)}
-                          className="flex min-w-0 flex-wrap items-center gap-2"
+                          className="grid w-full min-w-0 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center"
                         >
                           <select
                             name="assistPlayerId"
                             defaultValue={matchEvent.assistPlayerId ?? ""}
                             disabled={editBlocked || assistOptions.length === 0}
                             aria-label="Assist player"
-                            className="min-h-9 min-w-44 rounded-md border border-zinc-300 bg-white px-2 text-xs font-bold text-zinc-700 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-400"
+                            className="min-h-9 w-full min-w-0 rounded-md border border-zinc-300 bg-white px-2 text-xs font-bold text-zinc-700 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-400 sm:w-auto sm:min-w-44"
                           >
                             <option value="">No assist</option>
                             {assistOptions.map((player) => (
@@ -3766,7 +3766,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                           <button
                             type="submit"
                             disabled={editBlocked || assistOptions.length === 0}
-                            className="inline-flex min-h-9 items-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-xs font-black text-zinc-700 transition hover:border-emerald-300 hover:text-emerald-800 disabled:cursor-not-allowed disabled:opacity-45"
+                            className="inline-flex min-h-9 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-xs font-black text-zinc-700 transition hover:border-emerald-300 hover:text-emerald-800 disabled:cursor-not-allowed disabled:opacity-45"
                           >
                             <Save className="h-3.5 w-3.5" aria-hidden="true" />
                             Save assist
@@ -3780,7 +3780,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                             updateEventDisallowed(matchEvent, !matchEvent.isDisallowed)
                           }
                           disabled={editBlocked}
-                          className="inline-flex min-h-9 items-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-xs font-black text-zinc-700 transition hover:border-emerald-300 hover:text-emerald-800 disabled:cursor-not-allowed disabled:opacity-45"
+                          className="inline-flex min-h-9 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-xs font-black text-zinc-700 transition hover:border-emerald-300 hover:text-emerald-800 disabled:cursor-not-allowed disabled:opacity-45"
                         >
                           {matchEvent.isDisallowed ? (
                             <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
@@ -3794,7 +3794,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                         type="button"
                         onClick={() => deleteMatchEvent(matchEvent)}
                         disabled={editBlocked}
-                        className="inline-flex min-h-9 items-center gap-2 rounded-md border border-red-200 bg-white px-3 text-xs font-black text-red-600 transition hover:bg-red-50 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-45"
+                        className="inline-flex min-h-9 items-center justify-center gap-2 rounded-md border border-red-200 bg-white px-3 text-xs font-black text-red-600 transition hover:bg-red-50 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-45"
                       >
                         <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                         Delete

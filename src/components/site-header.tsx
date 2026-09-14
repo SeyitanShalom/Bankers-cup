@@ -39,7 +39,7 @@ export function SiteHeader() {
   return (
     <header className="animate-drop-in fixed inset-x-0 top-0 z-40 border-b border-zinc-200 bg-white/95 backdrop-blur">
       <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
-        <Link href="/" className="group flex items-center gap-3">
+        <Link href="/" className="group flex min-w-0 max-w-full items-center gap-3">
           {/* <span className="grid h-10 w-10 place-items-center rounded-md bg-zinc-950 text-white transition duration-200 group-hover:rotate-3 group-hover:bg-emerald-800">
             <Trophy className="h-5 w-5" aria-hidden="true" />
           </span>
@@ -51,7 +51,7 @@ export function SiteHeader() {
               Football Competition
             </span>
           </span> */}
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2">
             <Image
               src="/CBN logo.png"
               alt="Bankers Cup Logo"
@@ -65,11 +65,11 @@ export function SiteHeader() {
               width={35}
               height={35}
             />
-            <span>
-              <span className="block text-base font-black leading-tight text-zinc-950">
+            <span className="min-w-0">
+              <span className="block truncate text-base font-black leading-tight text-zinc-950">
                 Akure Bankers&apos; Cup
               </span>
-              <span className="block text-xs font-bold text-emerald-700">
+              <span className="block truncate text-xs font-bold text-emerald-700">
                 Football Competition
               </span>
             </span>
@@ -77,7 +77,7 @@ export function SiteHeader() {
         </Link>
 
         <nav
-          className="flex w-full max-w-full flex-nowrap justify-start gap-1 overflow-x-auto sm:w-auto sm:justify-end"
+          className="flex w-full min-w-0 max-w-full flex-nowrap justify-start gap-1 overflow-x-auto sm:w-auto sm:justify-end"
           aria-label="Main navigation"
         >
           {navItems.map((item) => {

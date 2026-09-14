@@ -24,11 +24,11 @@ export function LiveMatchScore({ match, variant = "card" }: LiveMatchScoreProps)
   if (variant === "large") {
     return (
       <div
-        className={`grid place-items-center rounded-lg border border-zinc-200 bg-zinc-50 px-8 py-5 ${
+        className={`grid w-full max-w-full place-items-center rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-5 sm:px-8 ${
           liveMatch.status === "live" ? "score-glow" : ""
         }`}
       >
-        <p className="text-5xl font-black text-zinc-950">
+        <p className="text-4xl font-black leading-none text-zinc-950 sm:text-5xl">
           {showScore ? liveMatch.homeScore ?? 0 : "-"} -{" "}
           {showScore ? liveMatch.awayScore ?? 0 : "-"}
         </p>
@@ -43,7 +43,7 @@ export function LiveMatchScore({ match, variant = "card" }: LiveMatchScoreProps)
 
   if (!showScore) {
     return (
-      <div className="grid min-w-20 place-items-center rounded-md border border-dashed border-zinc-300 bg-zinc-50 px-3 py-2 text-sm font-bold text-zinc-500">
+      <div className="grid min-w-16 place-items-center rounded-md border border-dashed border-zinc-300 bg-zinc-50 px-2 py-2 text-sm font-bold text-zinc-500 sm:min-w-20 sm:px-3">
         VS
       </div>
     );
@@ -51,7 +51,7 @@ export function LiveMatchScore({ match, variant = "card" }: LiveMatchScoreProps)
 
   return (
     <div
-      className={`grid min-w-20 place-items-center rounded-md border border-zinc-200 bg-white px-3 py-2 text-xl font-black text-zinc-950 shadow-sm ${
+      className={`grid min-w-16 place-items-center rounded-md border border-zinc-200 bg-white px-2 py-2 text-lg font-black leading-tight text-zinc-950 shadow-sm sm:min-w-20 sm:px-3 sm:text-xl ${
         liveMatch.status === "live" ? "score-glow" : ""
       }`}
     >

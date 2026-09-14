@@ -8,21 +8,17 @@ type StandingsTableProps = {
 
 export function StandingsTable({ rows, compact = false }: StandingsTableProps) {
   const visibleRows = compact ? rows.slice(0, 8) : rows;
-  const tableClassName = compact
-    ? "w-full table-fixed border-collapse text-xs sm:text-sm"
-    : "min-w-[620px] w-full table-fixed border-collapse text-xs sm:text-sm";
-  const teamHeaderClassName = compact ? "px-2 py-3 sm:px-4" : "w-48 px-2 py-3 sm:w-56 sm:px-4";
-  const teamCellClassName = compact ? "px-2 py-3 sm:px-4" : "w-48 px-2 py-3 sm:w-56 sm:px-4";
-  const resultHeaderClassName = compact
-    ? "hidden w-12 px-3 py-3 text-center sm:table-cell"
-    : "w-12 px-3 py-3 text-center";
-  const resultCellClassName = compact
-    ? "hidden px-3 py-3 text-center font-semibold text-zinc-700 sm:table-cell"
-    : "px-3 py-3 text-center font-semibold text-zinc-700";
+  const tableClassName = "w-full table-fixed border-collapse text-xs sm:text-sm";
+  const teamHeaderClassName = compact ? "px-2 py-3 sm:px-4" : "px-2 py-3 sm:w-56 sm:px-4";
+  const teamCellClassName = compact ? "px-2 py-3 sm:px-4" : "px-2 py-3 sm:w-56 sm:px-4";
+  const resultHeaderClassName = "hidden w-12 px-3 py-3 text-center sm:table-cell";
+  const resultCellClassName = "hidden px-3 py-3 text-center font-semibold text-zinc-700 sm:table-cell";
+  const goalHeaderClassName = "hidden w-12 px-3 py-3 text-center md:table-cell";
+  const goalCellClassName = "hidden px-3 py-3 text-center font-semibold text-zinc-700 md:table-cell";
 
   return (
     <div className="animate-rise-in motion-card overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
-      <div className={compact ? "" : "overflow-x-auto"}>
+      <div>
         <table className={tableClassName}>
           <thead className="bg-zinc-950 text-left text-xs uppercase text-white">
             <tr>
@@ -34,8 +30,8 @@ export function StandingsTable({ rows, compact = false }: StandingsTableProps) {
               <th className={resultHeaderClassName}>L</th>
               {!compact ? (
                 <>
-                  <th className="w-12 px-3 py-3 text-center">GF</th>
-                  <th className="w-12 px-3 py-3 text-center">GA</th>
+                  <th className={goalHeaderClassName}>GF</th>
+                  <th className={goalHeaderClassName}>GA</th>
                 </>
               ) : null}
               <th className="w-10 px-1 py-3 text-center sm:w-12 sm:px-3">GD</th>
@@ -70,10 +66,10 @@ export function StandingsTable({ rows, compact = false }: StandingsTableProps) {
                 <td className={resultCellClassName}>{row.lost}</td>
                 {!compact ? (
                   <>
-                    <td className="px-3 py-3 text-center font-semibold text-zinc-700">
+                    <td className={goalCellClassName}>
                       {row.goalsFor}
                     </td>
-                    <td className="px-3 py-3 text-center font-semibold text-zinc-700">
+                    <td className={goalCellClassName}>
                       {row.goalsAgainst}
                     </td>
                   </>

@@ -18,16 +18,28 @@
 
 html {
   max-width: 100%;
+  min-width: 0;
   overflow-x: hidden;
   scroll-behavior: smooth;
 }
 
 body {
   max-width: 100%;
+  min-width: 0;
   overflow-x: hidden;
+  overflow-wrap: anywhere;
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+}
+
+main,
+section,
+article,
+div,
+form,
+label {
+  min-width: 0;
 }
 
 img,
@@ -42,10 +54,22 @@ input,
 select,
 textarea {
   font: inherit;
+  max-width: 100%;
+  min-width: 0;
 }
 
 button {
   cursor: pointer;
+}
+
+input[type="file"] {
+  width: 100%;
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+select,
+textarea {
+  width: 100%;
 }
 
 .overflow-x-auto {

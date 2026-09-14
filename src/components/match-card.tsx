@@ -34,13 +34,13 @@ export function MatchCard({ match, teams }: MatchCardProps) {
         <LiveMatchStatus match={match} />
       </div>
 
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-center">
         <div className="flex min-w-0 items-center gap-3">
           <TeamCrest team={home} size="sm" />
           <p className="min-w-0 truncate text-sm font-extrabold text-zinc-950">{home.name}</p>
         </div>
         <LiveMatchScore match={match} />
-        <div className="flex min-w-0 items-center justify-end gap-3 text-right">
+        <div className="flex min-w-0 items-center gap-3 sm:justify-end sm:text-right">
           <p className="min-w-0 truncate text-sm font-extrabold text-zinc-950">{away.name}</p>
           <TeamCrest team={away} size="sm" />
         </div>

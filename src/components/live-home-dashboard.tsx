@@ -159,11 +159,11 @@ export function LiveHomeDashboard({ initialData }: LiveHomeDashboardProps) {
                     {formatStage(featuredMatch.stage)} - {formatKickoff(featuredMatch.kickoff)}
                   </p>
                 </div>
-                <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
+                <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 sm:flex sm:flex-1 sm:justify-between sm:gap-3">
                   <p className="truncate text-sm font-black text-white sm:text-base">
                     {featuredHome.name}
                   </p>
-                  <p className="grid min-w-16 place-items-center rounded-md bg-white px-3 py-2 text-sm font-black text-zinc-950">
+                  <p className="grid min-w-14 place-items-center rounded-md bg-white px-2 py-2 text-sm font-black text-zinc-950 sm:min-w-16 sm:px-3">
                     {featuredScore}
                   </p>
                   <p className="truncate text-right text-sm font-black text-white sm:text-base">
