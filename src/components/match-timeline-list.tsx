@@ -2,8 +2,10 @@ import type { ReactNode } from "react";
 import { Goal, Square } from "lucide-react";
 import {
   formatEventTime,
+  getMatchEventTypeLabel,
   getPlayer,
   getTeam,
+  isScoreEventType,
 } from "@/lib/tournament";
 import type { MatchEvent, Player, Team } from "@/lib/types";
 
@@ -15,10 +17,6 @@ type MatchTimelineListProps = {
   renderActions?: (event: MatchEvent) => ReactNode;
 };
 
-function isScoreEventType(type: MatchEvent["type"]) {
-  return type === "goal" || type === "own_goal";
-}
-
 function EventIcon({ event }: { event: MatchEvent }) {
   if (isScoreEventType(event.type)) {
     return <Goal className="h-4 w-4" aria-hidden="true" />;
@@ -28,7 +26,7 @@ function EventIcon({ event }: { event: MatchEvent }) {
 }
 
 function getEventLabel(event: MatchEvent) {
-  const label = event.type === "own_goal" ? "Own goal" : event.type.replace("_", " ");
+  const label = getMatchEventTypeLabel(event.type);
 
   if (isScoreEventType(event.type) && event.isDisallowed) {
     return `${label} disallowed`;

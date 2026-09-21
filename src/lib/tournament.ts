@@ -4,6 +4,7 @@ import type {
   DisciplineStatRow,
   Match,
   MatchEvent,
+  MatchEventType,
   MatchStage,
   Player,
   PlayerStatRow,
@@ -50,8 +51,28 @@ export function formatEventTime(event: Pick<MatchEvent, "minute" | "addedTime">)
   return event.addedTime > 0 ? `${event.minute}+${event.addedTime}` : `${event.minute}`;
 }
 
+export function isPlayerGoalEventType(type: MatchEventType) {
+  return type === "goal" || type === "penalty_goal";
+}
+
+export function isScoreEventType(type: MatchEventType) {
+  return isPlayerGoalEventType(type) || type === "own_goal";
+}
+
+export function getMatchEventTypeLabel(type: MatchEventType) {
+  const labels: Record<MatchEventType, string> = {
+    goal: "Goal",
+    penalty_goal: "Penalty goal",
+    own_goal: "Own goal",
+    yellow_card: "Yellow card",
+    red_card: "Red card",
+  };
+
+  return labels[type];
+}
+
 export function isScoreEvent(event: Pick<MatchEvent, "type" | "isDisallowed">) {
-  return (event.type === "goal" || event.type === "own_goal") && !event.isDisallowed;
+  return isScoreEventType(event.type) && !event.isDisallowed;
 }
 
 export function calculateMatchScoreFromEvents(
@@ -64,7 +85,7 @@ export function calculateMatchScoreFromEvents(
         return score;
       }
 
-      if (event.type === "goal") {
+      if (isPlayerGoalEventType(event.type)) {
         if (event.teamId === match.homeTeamId) score.homeScore += 1;
         if (event.teamId === match.awayTeamId) score.awayScore += 1;
         return score;
@@ -360,7 +381,7 @@ export function calculatePlayerStats(data: CompetitionData): PlayerStatRow[] {
 
     const playerStats = stats.get(event.playerId);
 
-    if (event.type === "goal" && !event.isDisallowed && playerStats) {
+    if (isPlayerGoalEventType(event.type) && !event.isDisallowed && playerStats) {
       playerStats.goals += 1;
     }
 

@@ -1,6 +1,6 @@
 import { createServerSupabaseClient } from "./supabase";
 import { getLocalCompetitionData } from "./local-data";
-import { calculateMatchScoreFromEvents } from "./tournament";
+import { calculateMatchScoreFromEvents, isScoreEventType } from "./tournament";
 import type {
   CompetitionData,
   Match,
@@ -201,7 +201,7 @@ function applyEventScores(matches: Match[], events: MatchEvent[]) {
   const eventsByMatchId = new Map<string, MatchEvent[]>();
 
   events.forEach((event) => {
-    if (event.type !== "goal" && event.type !== "own_goal") {
+    if (!isScoreEventType(event.type)) {
       return;
     }
 

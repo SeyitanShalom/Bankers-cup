@@ -8,6 +8,7 @@ import {
   getCleanSheetGoalkeeperId,
   isCleanSheetSide,
   isKnockoutStage,
+  isScoreEventType,
   MATCH_DURATION_MINUTES,
   type MatchSide,
 } from "./tournament";
@@ -180,6 +181,7 @@ export const emptyCompetitionData: CompetitionData = {
 
 const validMatchEventTypes: MatchEventType[] = [
   "goal",
+  "penalty_goal",
   "own_goal",
   "yellow_card",
   "red_card",
@@ -343,10 +345,6 @@ function assertIsoDate(value: unknown, message: string) {
   }
 
   return date;
-}
-
-function isScoreEventType(type: MatchEventType) {
-  return type === "goal" || type === "own_goal";
 }
 
 function isCardEventType(type: MatchEventType) {

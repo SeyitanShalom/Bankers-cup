@@ -20,7 +20,12 @@ export type MatchTimerPhase =
   | "full_time"
   | "penalties";
 
-export type MatchEventType = "goal" | "own_goal" | "yellow_card" | "red_card";
+export type MatchEventType =
+  | "goal"
+  | "penalty_goal"
+  | "own_goal"
+  | "yellow_card"
+  | "red_card";
 
 export type MatchEventRecipientType = "player" | "coach";
 

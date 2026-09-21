@@ -47,11 +47,13 @@ import {
   formatKickoff,
   formatStage,
   getCleanSheetGoalkeeperId,
+  getMatchEventTypeLabel,
   getMatchEvents,
   getTeamPlayers,
   HALF_DURATION_MINUTES,
   isCleanSheetSide,
   isKnockoutStage,
+  isScoreEventType,
   MATCH_DURATION_MINUTES,
   type MatchSide,
 } from "@/lib/tournament";
@@ -76,7 +78,13 @@ type AuthStatus = "checking" | "signed_out" | "authorized" | "forbidden" | "unco
 type Tab = "teams" | "players" | "matches" | "events" | "news";
 
 const stages: MatchStage[] = ["group", "quarter_final", "semi_final", "final", "third_place"];
-const eventTypes: MatchEventType[] = ["goal", "own_goal", "yellow_card", "red_card"];
+const eventTypes: MatchEventType[] = [
+  "goal",
+  "penalty_goal",
+  "own_goal",
+  "yellow_card",
+  "red_card",
+];
 const logoAccept = "image/png,image/jpeg,image/webp";
 const logoMaxBytes = 5 * 1024 * 1024;
 const logoExtensions: Record<string, string> = {
@@ -216,10 +224,6 @@ function NumberInput({
       />
     </label>
   );
-}
-
-function isScoreEventType(type: MatchEventType) {
-  return type === "goal" || type === "own_goal";
 }
 
 function isCardEventType(type: MatchEventType) {
@@ -3273,7 +3277,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                 >
                   {eventTypes.map((type) => (
                     <option key={type} value={type}>
-                      {type.replace("_", " ")}
+                      {getMatchEventTypeLabel(type)}
                     </option>
                   ))}
                 </select>
@@ -3552,7 +3556,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                             >
                               {eventTypes.map((type) => (
                                 <option key={type} value={type}>
-                                  {type.replace("_", " ")}
+                                  {getMatchEventTypeLabel(type)}
                                 </option>
                               ))}
                             </select>
