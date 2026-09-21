@@ -50,7 +50,9 @@ export function LiveMatchTimer({ match, variant = "compact" }: LiveMatchTimerPro
           )}
           {snapshot.phaseLabel}
         </span>
-        <span className="shrink-0 text-lg font-black">{snapshot.label}</span>
+        <span className="shrink-0 font-mono text-lg font-black tabular-nums">
+          {snapshot.label}
+        </span>
       </div>
     );
   }
@@ -65,7 +67,9 @@ export function LiveMatchTimer({ match, variant = "compact" }: LiveMatchTimerPro
           <h2 className="mt-1 text-lg font-black">{snapshot.phaseLabel}</h2>
         </div>
         <div className="min-w-0 text-left sm:text-right">
-          <p className="text-4xl font-black leading-none sm:text-5xl">{snapshot.label}</p>
+          <p className="font-mono text-4xl font-black leading-none tabular-nums sm:text-5xl">
+            {snapshot.label}
+          </p>
         </div>
       </div>
       <div className="mt-5 h-2 overflow-hidden rounded-full bg-white/15">

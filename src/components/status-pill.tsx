@@ -13,14 +13,16 @@ const statusStyles: Record<MatchStatus, string> = {
 };
 
 export function StatusPill({ status }: StatusPillProps) {
+  const isLive = status === "live";
+
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold capitalize transition ${statusStyles[status]}`}
     >
-      {status === "live" ? (
+      {isLive ? (
         <span className="live-pulse-dot h-1.5 w-1.5 rounded-full bg-red-600" aria-hidden="true" />
       ) : null}
-      {status}
+      <span className={isLive ? "live-blink" : ""}>{status}</span>
     </span>
   );
 }

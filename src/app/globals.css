@@ -142,6 +142,16 @@ textarea {
   }
 }
 
+@keyframes live-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.32;
+  }
+}
+
 @keyframes score-glow {
   0%,
   100% {
@@ -204,6 +214,10 @@ textarea {
   animation: soft-pulse 2.0s ease-in-out infinite;
 }
 
+.live-blink {
+  animation: live-blink 1.1s ease-in-out infinite;
+}
+
 .score-glow {
   animation: score-glow 2.4s ease-in-out infinite;
 }
@@ -234,6 +248,7 @@ textarea {
   }
 
   .hero-drift,
+  .live-blink,
   .live-pulse-dot,
   .score-glow,
   .sheen::after {

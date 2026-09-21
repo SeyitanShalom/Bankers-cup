@@ -69,31 +69,12 @@ export function getTimerElapsedSeconds(match: Match, now = Date.now()) {
   return savedElapsed;
 }
 
-function formatRunningMinute(phase: MatchTimerPhase, elapsedSeconds: number) {
-  if (phase === "first_half") {
-    if (elapsedSeconds < FIRST_HALF_SECONDS) {
-      return `${Math.floor(elapsedSeconds / 60) + 1}'`;
-    }
+function formatElapsedClock(elapsedSeconds: number) {
+  const totalSeconds = Math.max(0, Math.floor(elapsedSeconds));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
 
-    return `${HALF_DURATION_MINUTES}+${Math.floor(
-      (elapsedSeconds - FIRST_HALF_SECONDS) / 60,
-    ) + 1}'`;
-  }
-
-  if (phase === "second_half") {
-    if (elapsedSeconds < FULL_TIME_SECONDS) {
-      return `${Math.max(
-        HALF_DURATION_MINUTES + 1,
-        Math.floor(elapsedSeconds / 60) + 1,
-      )}'`;
-    }
-
-    return `${MATCH_DURATION_MINUTES}+${Math.floor(
-      (elapsedSeconds - FULL_TIME_SECONDS) / 60,
-    ) + 1}'`;
-  }
-
-  return "";
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
 export function getTimerSnapshot(match: Match, now?: number): TimerSnapshot {
@@ -111,8 +92,19 @@ export function getTimerSnapshot(match: Match, now?: number): TimerSnapshot {
       elapsedSeconds,
       running,
       progress,
-      label: formatRunningMinute(phase, elapsedSeconds),
+      label: formatElapsedClock(elapsedSeconds),
       phaseLabel: phase === "first_half" ? "1st half" : "2nd half",
+    };
+  }
+
+  if (phase === "not_started" && match.status === "live") {
+    return {
+      phase,
+      elapsedSeconds,
+      running,
+      progress,
+      label: formatElapsedClock(elapsedSeconds),
+      phaseLabel: "Live",
     };
   }
 

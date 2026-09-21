@@ -95,7 +95,7 @@ export function LiveHomeDashboard({ initialData }: LiveHomeDashboardProps) {
               {heroBadge}
             </p>
             <h1 className="animate-rise-in motion-delay-1 max-w-3xl text-5xl font-black leading-none text-white sm:text-6xl lg:text-7xl">
-              Bankers' Cup
+              Bankers&apos; Cup
             </h1>
             <p className="animate-rise-in motion-delay-2 mt-5 max-w-2xl text-base font-semibold leading-7 text-zinc-100 sm:text-lg sm:leading-8">
               Fourteen banking teams chase one table, eight knockout places, and a final run under the lights.
@@ -150,7 +150,11 @@ export function LiveHomeDashboard({ initialData }: LiveHomeDashboardProps) {
             </dl>
 
             {featuredMatch && featuredHome && featuredAway ? (
-              <div className="animate-rise-in motion-card motion-delay-3 mt-5 flex max-w-3xl flex-wrap items-center gap-x-5 gap-y-3 rounded-md border border-white/15 bg-zinc-950/35 px-4 py-3 backdrop-blur">
+              <Link
+                href={`/matches/${featuredMatch.id}`}
+                className="animate-rise-in motion-card motion-delay-3 group mt-5 flex max-w-3xl flex-wrap items-center gap-x-5 gap-y-3 rounded-md border border-white/15 bg-zinc-950/35 px-4 py-3 backdrop-blur outline-none transition focus-visible:ring-2 focus-visible:ring-amber-300 hover:border-amber-300/70 hover:bg-zinc-950/55"
+                aria-label={`${featuredHome.name} vs ${featuredAway.name} match details`}
+              >
                 <div>
                   <p className="text-xs font-black uppercase text-emerald-300">
                     {featuredMatchLabel}
@@ -170,7 +174,8 @@ export function LiveHomeDashboard({ initialData }: LiveHomeDashboardProps) {
                     {featuredAway.name}
                   </p>
                 </div>
-              </div>
+                <ArrowRight className="h-4 w-4 text-amber-200 transition group-hover:translate-x-0.5" aria-hidden="true" />
+              </Link>
             ) : null}
           </div>
         </div>
