@@ -94,7 +94,7 @@ export function LiveHomeDashboard({ initialData }: LiveHomeDashboardProps) {
             <p className="live-pulse-dot mb-4 inline-flex rounded-full border border-amber-300/35 bg-amber-300/10 px-3 py-1 text-xs font-black uppercase tracking-wide text-amber-200 backdrop-blur">
               {heroBadge}
             </p>
-            <h1 className="animate-rise-in motion-delay-1 max-w-3xl text-5xl font-black leading-none text-white sm:text-6xl lg:text-7xl">
+            <h1 className="animate-rise-in motion-delay-1 max-w-3xl text-4xl font-black leading-none text-white sm:text-6xl lg:text-7xl">
               Bankers&apos; Cup
             </h1>
             <p className="animate-rise-in motion-delay-2 mt-5 max-w-2xl text-base font-semibold leading-7 text-zinc-100 sm:text-lg sm:leading-8">
@@ -188,7 +188,7 @@ export function LiveHomeDashboard({ initialData }: LiveHomeDashboardProps) {
               <p className="text-sm font-black uppercase tracking-wide text-emerald-700">
                 League phase
               </p>
-              <h2 className="text-3xl font-black text-zinc-950">Current Standings</h2>
+              <h2 className="text-2xl font-black text-zinc-950 sm:text-3xl">Current Standings</h2>
             </div>
             <Link
               href="/standings"
@@ -210,7 +210,7 @@ export function LiveHomeDashboard({ initialData }: LiveHomeDashboardProps) {
               <div className="mt-4 flex items-center gap-4">
                 <TeamCrest team={topScorer.team} size="lg" />
                 <div>
-                  <h2 className="text-2xl font-black text-zinc-950">{topScorer.player.name}</h2>
+                  <h2 className="text-xl font-black text-zinc-950 sm:text-2xl">{topScorer.player.name}</h2>
                   <p className="font-semibold text-zinc-500">{topScorer.team.name}</p>
                 </div>
               </div>
@@ -228,7 +228,7 @@ export function LiveHomeDashboard({ initialData }: LiveHomeDashboardProps) {
         <div className="mx-auto grid max-w-7xl gap-6 px-4 py-8 sm:px-6 lg:grid-cols-2 lg:px-8">
           <div>
             <div className="mb-4 flex items-center justify-between gap-3">
-              <h2 className="text-2xl font-black text-zinc-950">Upcoming Fixtures</h2>
+              <h2 className="text-xl font-black text-zinc-950 sm:text-2xl">Upcoming Fixtures</h2>
               <Link href="/fixtures" className="group text-sm font-black text-emerald-700 transition hover:text-emerald-900">
                 View all
               </Link>
@@ -242,7 +242,7 @@ export function LiveHomeDashboard({ initialData }: LiveHomeDashboardProps) {
 
           <div>
             <div className="mb-4 flex items-center justify-between gap-3">
-              <h2 className="text-2xl font-black text-zinc-950">Latest Results</h2>
+              <h2 className="text-xl font-black text-zinc-950 sm:text-2xl">Latest Results</h2>
               <Link href="/fixtures" className="group text-sm font-black text-emerald-700 transition hover:text-emerald-900">
                 Results
               </Link>

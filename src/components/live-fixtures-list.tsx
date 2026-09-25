@@ -58,7 +58,7 @@ export function LiveFixturesList({ initialData }: LiveFixturesListProps) {
     <div className="mt-8 space-y-8">
       {sections.map((section) => (
         <section key={section.key}>
-          <h2 className="mb-4 text-2xl font-black text-zinc-950">{section.title}</h2>
+          <h2 className="mb-4 text-xl font-black text-zinc-950 sm:text-2xl">{section.title}</h2>
           <div className="grid gap-4 lg:grid-cols-2">
             {section.matches.map((match) => (
               <MatchCard key={match.id} match={match} teams={data.teams} />

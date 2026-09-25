@@ -3,13 +3,14 @@ import type { Team } from "@/lib/types";
 
 type TeamCrestProps = {
   team: Team;
-  size?: "sm" | "md" | "lg";
+  size?: "sm" | "md" | "lg" | "responsiveMd";
 };
 
 const sizeClasses = {
   sm: "h-9 w-9 text-xs",
   md: "h-12 w-12 text-sm",
   lg: "h-16 w-16 text-lg",
+  responsiveMd: "h-9 w-9 text-xs sm:h-12 sm:w-12 sm:text-sm",
 };
 
 function getInitials(name: string) {

@@ -20,7 +20,7 @@ export default function Error({
         <p className="text-sm font-black uppercase tracking-wide text-emerald-700">
           Bankers Cup
         </p>
-        <h1 className="mt-2 text-3xl font-black text-zinc-950">
+        <h1 className="mt-2 text-2xl font-black text-zinc-950 sm:text-3xl">
           Competition data is temporarily unavailable
         </h1>
         <p className="mt-3 text-sm font-semibold leading-6 text-zinc-600">

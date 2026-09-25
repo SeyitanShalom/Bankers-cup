@@ -43,7 +43,7 @@ export function LiveMatchScore({ match, variant = "card" }: LiveMatchScoreProps)
 
   if (!showScore) {
     return (
-      <div className="grid min-w-16 place-items-center rounded-md border border-dashed border-zinc-300 bg-zinc-50 px-2 py-2 text-sm font-bold text-zinc-500 sm:min-w-20 sm:px-3">
+      <div className="grid min-w-12 place-items-center rounded-md border border-dashed border-zinc-300 bg-zinc-50 px-2 py-1.5 text-xs font-bold text-zinc-500 sm:min-w-20 sm:px-3 sm:py-2 sm:text-sm">
         VS
       </div>
     );
@@ -51,13 +51,13 @@ export function LiveMatchScore({ match, variant = "card" }: LiveMatchScoreProps)
 
   return (
     <div
-      className={`grid min-w-16 place-items-center rounded-md border border-zinc-200 bg-white px-2 py-2 text-lg font-black leading-tight text-zinc-950 shadow-sm sm:min-w-20 sm:px-3 sm:text-xl ${
+      className={`grid min-w-12 place-items-center rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-sm font-black leading-tight text-zinc-950 shadow-sm sm:min-w-20 sm:px-3 sm:py-2 sm:text-xl ${
         liveMatch.status === "live" ? "score-glow" : ""
       }`}
     >
       {liveMatch.homeScore ?? 0} - {liveMatch.awayScore ?? 0}
       {hasPenaltyScore(liveMatch) && (
-        <span className="mt-1 text-xs font-semibold text-zinc-500">
+        <span className="mt-0.5 text-[10px] font-semibold text-zinc-500 sm:mt-1 sm:text-xs">
           Pens {liveMatch.homePenaltyScore}-{liveMatch.awayPenaltyScore}
         </span>
       )}

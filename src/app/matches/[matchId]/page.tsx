@@ -58,7 +58,7 @@ export default async function MatchDetailPage({
               <p className="text-xs font-black uppercase tracking-wide text-amber-300">
                 {formatStage(match.stage)}
               </p>
-              <h1 className="text-2xl font-black">{home.name} vs {away.name}</h1>
+              <h1 className="text-xl font-black sm:text-2xl">{home.name} vs {away.name}</h1>
             </div>
             <LiveMatchStatus match={match} />
           </div>
@@ -69,7 +69,7 @@ export default async function MatchDetailPage({
             <TeamCrest team={home} size="lg" />
             <div>
               <p className="text-sm font-bold text-zinc-500">Home</p>
-              <h2 className="text-2xl font-black text-zinc-950">{home.name}</h2>
+              <h2 className="text-xl font-black text-zinc-950 sm:text-2xl">{home.name}</h2>
             </div>
           </div>
 
@@ -78,7 +78,7 @@ export default async function MatchDetailPage({
           <div className="flex items-center justify-start gap-4 md:justify-end md:text-right">
             <div>
               <p className="text-sm font-bold text-zinc-500">Away</p>
-              <h2 className="text-2xl font-black text-zinc-950">{away.name}</h2>
+              <h2 className="text-xl font-black text-zinc-950 sm:text-2xl">{away.name}</h2>
             </div>
             <TeamCrest team={away} size="lg" />
           </div>
@@ -103,7 +103,7 @@ export default async function MatchDetailPage({
       </div>
 
       <section className="mt-6 rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
-        <h2 className="text-2xl font-black text-zinc-950">Match Timeline</h2>
+        <h2 className="text-xl font-black text-zinc-950 sm:text-2xl">Match Timeline</h2>
         <div className="mt-5">
           <LiveMatchTimeline
             match={match}

@@ -24,7 +24,7 @@ export default async function StatsPage() {
         <p className="text-sm font-black uppercase tracking-wide text-emerald-700">
           Player records
         </p>
-        <h1 className="text-4xl font-black text-zinc-950">Stats</h1>
+        <h1 className="text-3xl font-black text-zinc-950 sm:text-4xl">Stats</h1>
       </div>
 
       <div className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3">

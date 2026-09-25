@@ -2119,7 +2119,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
             <p className="text-sm font-black uppercase tracking-wide text-emerald-700">
               Competition control
             </p>
-            <h1 className="text-4xl font-black text-zinc-950">Admin Dashboard</h1>
+            <h1 className="text-3xl font-black text-zinc-950 sm:text-4xl">Admin Dashboard</h1>
             <p className="mt-2 max-w-3xl text-sm font-semibold text-zinc-500">
               {localMode
                 ? "Local mode is active. Edits save to data/competition.json on this computer."
@@ -2195,7 +2195,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                 <p className="text-sm font-black uppercase tracking-wide text-emerald-700">
                   Competition control
                 </p>
-                <h2 id="admin-login-title" className="text-2xl font-black text-zinc-950">
+                <h2 id="admin-login-title" className="text-xl font-black text-zinc-950 sm:text-2xl">
                   {loginModalTitle}
                 </h2>
               </div>
@@ -2310,7 +2310,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       {activeTab === "teams" && (
         <section className="mt-6 grid gap-6 lg:grid-cols-[0.75fr_1.25fr]">
           <form onSubmit={addTeam} className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
-            <h2 className="text-2xl font-black text-zinc-950">Add Team</h2>
+            <h2 className="text-xl font-black text-zinc-950 sm:text-2xl">Add Team</h2>
             <div className="mt-5 grid gap-4">
               <label className="grid gap-2 text-sm font-bold text-zinc-700" htmlFor="team-name">
                 Team name
@@ -2342,7 +2342,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
           </form>
 
           <section className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
-            <h2 className="text-2xl font-black text-zinc-950">Teams</h2>
+            <h2 className="text-xl font-black text-zinc-950 sm:text-2xl">Teams</h2>
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
               {data.teams.map((team) => {
                 const isEditing = editingTeamId === team.id;
@@ -2445,7 +2445,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
         <section className="mt-6 grid gap-6 lg:grid-cols-[0.75fr_1.25fr]">
           <div className="space-y-6">
             <form onSubmit={addPlayer} className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
-              <h2 className="text-2xl font-black text-zinc-950">Add Player</h2>
+              <h2 className="text-xl font-black text-zinc-950 sm:text-2xl">Add Player</h2>
               <div className="mt-5 grid gap-4">
                 <label className="grid gap-2 text-sm font-bold text-zinc-700" htmlFor="player-name">
                   Player name
@@ -2487,7 +2487,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
 
           <div className="space-y-6">
             <section className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
-              <h2 className="text-2xl font-black text-zinc-950">Squads</h2>
+              <h2 className="text-xl font-black text-zinc-950 sm:text-2xl">Squads</h2>
               <div className="mt-5 divide-y divide-zinc-100">
                 {data.players.length > 0 ? (
                   data.players.map((player) => {
@@ -2615,7 +2615,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       {activeTab === "matches" && (
         <section className="mt-6 grid gap-6 lg:grid-cols-[0.75fr_1.25fr]">
           <form onSubmit={addMatch} className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
-              <h2 className="text-2xl font-black text-zinc-950">Add Fixture</h2>
+              <h2 className="text-xl font-black text-zinc-950 sm:text-2xl">Add Fixture</h2>
               <div className="mt-5 grid gap-4">
                 <label className="grid gap-2 text-sm font-bold text-zinc-700" htmlFor="match-stage">
                   Stage
@@ -2693,7 +2693,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
             </form>
 
           <section className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
-            <h2 className="text-2xl font-black text-zinc-950">Match List</h2>
+            <h2 className="text-xl font-black text-zinc-950 sm:text-2xl">Match List</h2>
             <div className="mt-5 divide-y divide-zinc-100">
               {data.matches.map((match) => {
                 const home = data.teams.find((team) => team.id === match.homeTeamId);
@@ -2874,7 +2874,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
       {activeTab === "news" && (
         <section className="mt-6 grid gap-6 lg:grid-cols-[0.75fr_1.25fr]">
           <form onSubmit={addNewsPost} className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
-            <h2 className="text-2xl font-black text-zinc-950">Add News</h2>
+            <h2 className="text-xl font-black text-zinc-950 sm:text-2xl">Add News</h2>
             <div className="mt-5 grid gap-4">
               <label className="grid gap-2 text-sm font-bold text-zinc-700" htmlFor="news-title">
                 Title
@@ -2906,7 +2906,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
           </form>
 
           <section className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
-            <h2 className="text-2xl font-black text-zinc-950">News Posts</h2>
+            <h2 className="text-xl font-black text-zinc-950 sm:text-2xl">News Posts</h2>
             <div className="mt-5 divide-y divide-zinc-100">
               {data.newsPosts.length > 0 ? (
                 data.newsPosts.map((post) => {
@@ -3036,7 +3036,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                 <p className="text-sm font-black uppercase tracking-wide text-emerald-700">
                   Live control
                 </p>
-                <h2 className="text-2xl font-black text-zinc-950">Match Timer</h2>
+                <h2 className="text-xl font-black text-zinc-950 sm:text-2xl">Match Timer</h2>
               </div>
               {selectedMatch ? <StatusPill status={selectedMatch.status} /> : null}
             </div>
@@ -3197,7 +3197,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                 <p className="text-sm font-black uppercase tracking-wide text-emerald-700">
                   Clean sheet records
                 </p>
-                <h2 className="text-2xl font-black text-zinc-950">Clean Sheet Credits</h2>
+                <h2 className="text-xl font-black text-zinc-950 sm:text-2xl">Clean Sheet Credits</h2>
               </div>
               <div className="mt-5 grid gap-4 md:grid-cols-2">
                 {selectedCleanSheetSides.map(({ side, team }) => {
@@ -3257,7 +3257,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
               selectedMatchIsKnockout ? "" : "lg:col-span-2"
             }`}
           >
-            <h2 className="text-2xl font-black text-zinc-950">Add Event</h2>
+            <h2 className="text-xl font-black text-zinc-950 sm:text-2xl">Add Event</h2>
             <div className="mt-5 grid gap-4">
               <input type="hidden" name="matchId" value={selectedMatchId} />
               <label className="grid gap-2 text-sm font-bold text-zinc-700" htmlFor="event-type">
@@ -3429,7 +3429,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                   <p className="text-sm font-black uppercase tracking-wide text-emerald-700">
                     Knockout
                   </p>
-                  <h2 className="text-2xl font-black text-zinc-950">Penalty Score</h2>
+                  <h2 className="text-xl font-black text-zinc-950 sm:text-2xl">Penalty Score</h2>
                 </div>
                 {hasPenaltyScore(selectedMatch) ? (
                   <p className="rounded-md bg-zinc-950 px-3 py-2 text-sm font-black text-white">
@@ -3472,7 +3472,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
                 <p className="text-sm font-black uppercase tracking-wide text-emerald-700">
                   Selected fixture
                 </p>
-                <h2 className="text-2xl font-black text-zinc-950">Match Timeline</h2>
+                <h2 className="text-xl font-black text-zinc-950 sm:text-2xl">Match Timeline</h2>
               </div>
               {selectedMatch ? <StatusPill status={selectedMatch.status} /> : null}
             </div>
@@ -3811,7 +3811,7 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
           </section>
 
           <section className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm lg:col-span-2">
-            <h2 className="text-2xl font-black text-zinc-950">Qualification Snapshot</h2>
+            <h2 className="text-xl font-black text-zinc-950 sm:text-2xl">Qualification Snapshot</h2>
             <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {standings.slice(0, 8).map((row) => (
                 <div key={row.team.id} className="flex items-center gap-3 rounded-md bg-emerald-50 p-3">

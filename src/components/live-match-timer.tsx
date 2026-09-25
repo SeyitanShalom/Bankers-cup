@@ -41,16 +41,16 @@ export function LiveMatchTimer({ match, variant = "compact" }: LiveMatchTimerPro
 
   if (variant === "compact") {
     return (
-      <div className="mt-3 flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-md bg-zinc-950 px-3 py-2 text-white">
-        <span className="inline-flex min-w-0 items-center gap-2 text-xs font-black uppercase tracking-wide text-emerald-200">
+      <div className="mt-3 flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-md bg-zinc-950 px-2.5 py-1.5 text-white sm:px-3 sm:py-2">
+        <span className="inline-flex min-w-0 items-center gap-1.5 text-[11px] font-black uppercase tracking-wide text-emerald-200 sm:gap-2 sm:text-xs">
           {snapshot.running ? (
-            <Radio className="h-4 w-4" aria-hidden="true" />
+            <Radio className="h-3.5 w-3.5 sm:h-4 sm:w-4" aria-hidden="true" />
           ) : (
-            <Clock3 className="h-4 w-4" aria-hidden="true" />
+            <Clock3 className="h-3.5 w-3.5 sm:h-4 sm:w-4" aria-hidden="true" />
           )}
           {snapshot.phaseLabel}
         </span>
-        <span className="shrink-0 font-mono text-lg font-black tabular-nums">
+        <span className="shrink-0 font-mono text-base font-black tabular-nums sm:text-lg">
           {snapshot.label}
         </span>
       </div>

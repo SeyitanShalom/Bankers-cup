@@ -52,7 +52,7 @@ export default async function TeamDetailPage({
               <p className="text-sm font-black uppercase tracking-wide text-emerald-700">
                 Team profile
               </p>
-              <h1 className="text-4xl font-black text-zinc-950">{team.name}</h1>
+              <h1 className="text-3xl font-black text-zinc-950 sm:text-4xl">{team.name}</h1>
             </div>
           </div>
           <div className="grid grid-cols-3 gap-2 text-center">
@@ -75,7 +75,7 @@ export default async function TeamDetailPage({
       <section className="mt-6 grid gap-6 lg:grid-cols-[0.85fr_1.15fr]">
         <div className="space-y-6">
           <section className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
-            <h2 className="text-2xl font-black text-zinc-950">Squad</h2>
+            <h2 className="text-xl font-black text-zinc-950 sm:text-2xl">Squad</h2>
             <div className="mt-4 divide-y divide-zinc-100">
               {squad.length > 0 ? (
                 squad.map((player) => {
@@ -101,7 +101,7 @@ export default async function TeamDetailPage({
         </div>
 
         <section>
-          <h2 className="mb-4 text-2xl font-black text-zinc-950">Matches</h2>
+          <h2 className="mb-4 text-xl font-black text-zinc-950 sm:text-2xl">Matches</h2>
           <div className="grid gap-4">
             {matches.length > 0 ? (
               matches.map((match) => <MatchCard key={match.id} match={match} teams={data.teams} />)

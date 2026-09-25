@@ -12,7 +12,7 @@ export default async function FixturesPage() {
         <p className="text-sm font-black uppercase tracking-wide text-emerald-700">
           Schedule and results
         </p>
-        <h1 className="text-4xl font-black text-zinc-950">Fixtures</h1>
+        <h1 className="text-3xl font-black text-zinc-950 sm:text-4xl">Fixtures</h1>
       </div>
 
       <LiveFixturesList initialData={data} />

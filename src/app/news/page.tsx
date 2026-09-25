@@ -20,7 +20,7 @@ export default async function NewsPage() {
           <p className="text-sm font-black uppercase tracking-wide text-emerald-700">
             Tournament updates
           </p>
-          <h1 className="text-4xl font-black text-zinc-950">News</h1>
+          <h1 className="text-3xl font-black text-zinc-950 sm:text-4xl">News</h1>
         </div>
         <p className="rounded-full bg-white px-4 py-2 text-sm font-bold text-zinc-600 shadow-sm">
           {posts.length} {posts.length === 1 ? "post" : "posts"}
@@ -40,7 +40,7 @@ export default async function NewsPage() {
               >
                 {formatPublishedAt(post.publishedAt)}
               </time>
-              <h2 className="mt-2 text-2xl font-black text-zinc-950">{post.title}</h2>
+              <h2 className="mt-2 text-xl font-black text-zinc-950 sm:text-2xl">{post.title}</h2>
               <p className="mt-4 whitespace-pre-line text-sm font-medium leading-7 text-zinc-600">
                 {post.body}
               </p>
@@ -48,7 +48,7 @@ export default async function NewsPage() {
           ))
         ) : (
           <section className="rounded-lg border border-dashed border-zinc-300 bg-white p-8 text-center">
-            <h2 className="text-2xl font-black text-zinc-950">No news yet</h2>
+            <h2 className="text-xl font-black text-zinc-950 sm:text-2xl">No news yet</h2>
             <p className="mt-2 text-sm font-semibold text-zinc-500">
               Match updates and tournament announcements will appear here.
             </p>

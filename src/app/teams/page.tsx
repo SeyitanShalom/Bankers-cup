@@ -17,7 +17,7 @@ export default async function TeamsPage() {
           <p className="text-sm font-black uppercase tracking-wide text-emerald-700">
             Competition roster
           </p>
-          <h1 className="text-4xl font-black text-zinc-950">Teams</h1>
+          <h1 className="text-3xl font-black text-zinc-950 sm:text-4xl">Teams</h1>
         </div>
         <p className="rounded-full bg-white px-4 py-2 text-sm font-bold text-zinc-600 shadow-sm">
           {data.teams.length} registered teams
@@ -42,7 +42,7 @@ export default async function TeamsPage() {
                   aria-hidden="true"
                 />
               </div>
-              <h2 className="mt-5 text-xl font-black text-zinc-950">{team.name}</h2>
+              <h2 className="mt-5 text-lg font-black text-zinc-950 sm:text-xl">{team.name}</h2>
               <div className="mt-4 grid grid-cols-3 gap-2 text-center">
                 <div className="rounded-md bg-zinc-50 p-2">
                   <p className="text-lg font-black text-zinc-950">{row?.rank ?? "-"}</p>
