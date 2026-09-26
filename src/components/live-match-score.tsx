@@ -24,11 +24,11 @@ export function LiveMatchScore({ match, variant = "card" }: LiveMatchScoreProps)
   if (variant === "large") {
     return (
       <div
-        className={`grid w-full max-w-full place-items-center rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-5 sm:px-8 ${
+        className={`grid min-w-24 max-w-full place-items-center rounded-md border border-zinc-200 bg-white px-4 py-3 text-zinc-950 shadow-sm sm:min-w-28 sm:px-5 sm:py-3.5 ${
           liveMatch.status === "live" ? "score-glow" : ""
         }`}
       >
-        <p className="text-4xl font-black leading-none text-zinc-950 sm:text-5xl">
+        <p className="text-2xl font-black leading-tight sm:text-3xl">
           {showScore ? liveMatch.homeScore ?? 0 : "-"} -{" "}
           {showScore ? liveMatch.awayScore ?? 0 : "-"}
         </p>

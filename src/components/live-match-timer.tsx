@@ -67,7 +67,7 @@ export function LiveMatchTimer({ match, variant = "compact" }: LiveMatchTimerPro
           <h2 className="mt-1 text-lg font-black">{snapshot.phaseLabel}</h2>
         </div>
         <div className="min-w-0 text-left sm:text-right">
-          <p className="font-mono text-4xl font-black leading-none tabular-nums sm:text-5xl">
+          <p className="font-mono text-2xl font-black leading-none tabular-nums sm:text-3xl">
             {snapshot.label}
           </p>
         </div>

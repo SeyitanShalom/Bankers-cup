@@ -64,23 +64,35 @@ export default async function MatchDetailPage({
           </div>
         </div>
 
-        <div className="grid gap-6 p-5 md:grid-cols-[1fr_auto_1fr] md:items-center">
-          <div className="flex items-center gap-4">
-            <TeamCrest team={home} size="lg" />
-            <div>
-              <p className="text-sm font-bold text-zinc-500">Home</p>
-              <h2 className="text-xl font-black text-zinc-950 sm:text-2xl">{home.name}</h2>
+        <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 p-4 sm:gap-4 sm:p-5">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-4">
+            <TeamCrest team={home} size="responsiveMd" />
+            <div className="min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-wide text-zinc-400 sm:text-xs">
+                Home
+              </p>
+              <h2 className="truncate text-sm font-black text-zinc-950 sm:text-xl">
+                {home.name}
+              </h2>
             </div>
           </div>
 
-          <LiveMatchScore match={match} variant="large" />
+          <div className="justify-self-center">
+            <LiveMatchScore match={match} variant="large" />
+          </div>
 
-          <div className="flex items-center justify-start gap-4 md:justify-end md:text-right">
-            <div>
-              <p className="text-sm font-bold text-zinc-500">Away</p>
-              <h2 className="text-xl font-black text-zinc-950 sm:text-2xl">{away.name}</h2>
+          <div className="flex min-w-0 items-center justify-end gap-2 text-right sm:gap-4">
+            <div className="order-2 shrink-0">
+              <TeamCrest team={away} size="responsiveMd" />
             </div>
-            <TeamCrest team={away} size="lg" />
+            <div className="order-1 min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-wide text-zinc-400 sm:text-xs">
+                Away
+              </p>
+              <h2 className="truncate text-sm font-black text-zinc-950 sm:text-xl">
+                {away.name}
+              </h2>
+            </div>
           </div>
         </div>
 
