@@ -24,7 +24,7 @@ export function SiteFooter() {
         <div className="flex flex-col items-center gap-2 lg:items-end lg:text-right">
           <p>
             Developed by{" "}
-            <span className="font-black text-zinc-800">Seyitan Shalom</span>
+            <span className="font-black text-zinc-800">Cre8iq</span>
           </p>
           <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 lg:justify-end">
             <a
@@ -32,7 +32,7 @@ export function SiteFooter() {
               className="inline-flex items-center gap-1.5 transition hover:text-emerald-700"
             >
               <Mail className="h-3.5 w-3.5" aria-hidden="true" />
-              seyitanoluwapelumi@gmail.com
+              cre8iq@gmail.com
             </a>
             <a
               href="tel:+2349064750948"
