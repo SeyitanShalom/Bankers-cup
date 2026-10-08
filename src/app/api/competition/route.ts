@@ -8,6 +8,10 @@ import { hasSupabaseConfig } from "@/lib/supabase";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+const competitionCacheHeaders = {
+  "Cache-Control": "public, max-age=0, s-maxage=30, stale-while-revalidate=120",
+};
+
 function isLocalWriteAllowed(request: Request) {
   if (process.env.BANKERS_CUP_LOCAL_MODE === "true") {
     return true;
@@ -27,13 +31,13 @@ export async function GET() {
   try {
     const data = await getCompetitionData();
 
-    return Response.json(data);
+    return Response.json(data, { headers: competitionCacheHeaders });
   } catch (error) {
     console.error("Unable to load competition data", error);
 
     return Response.json(
       { error: "Competition data is temporarily unavailable." },
-      { status: 503 },
+      { status: 503, headers: { "Cache-Control": "no-store" } },
     );
   }
 }

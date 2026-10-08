@@ -16,7 +16,15 @@ import {
   MATCH_DURATION_MINUTES,
 } from "@/lib/tournament";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
+
+export async function generateStaticParams() {
+  const data = await getCompetitionData();
+
+  return data.matches.map((match) => ({
+    matchId: match.id,
+  }));
+}
 
 export default async function MatchDetailPage({
   params,

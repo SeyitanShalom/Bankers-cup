@@ -1,6 +1,6 @@
 import { getCompetitionData } from "@/lib/data";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 function formatPublishedAt(publishedAt: string) {
   return new Intl.DateTimeFormat("en-NG", {

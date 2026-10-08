@@ -4,7 +4,7 @@ import { TeamCrest } from "@/components/team-crest";
 import { getCompetitionData } from "@/lib/data";
 import { calculateStandings, getTeamPlayers } from "@/lib/tournament";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 export default async function TeamsPage() {
   const data = await getCompetitionData();

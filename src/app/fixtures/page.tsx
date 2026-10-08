@@ -1,7 +1,7 @@
 import { LiveFixturesList } from "@/components/live-fixtures-list";
 import { getCompetitionData } from "@/lib/data";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 export default async function FixturesPage() {
   const data = await getCompetitionData();

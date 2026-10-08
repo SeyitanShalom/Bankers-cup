@@ -43,6 +43,7 @@ type SupabaseMatchEventPayload = {
 };
 
 const emptyMatchEvents: MatchEvent[] = [];
+const fallbackPollingIntervalMs = 60000;
 
 type MatchListener = (match: Match) => void;
 
@@ -112,7 +113,7 @@ function mapPayloadEvent(payload: SupabaseMatchEventPayload): MatchEvent {
 }
 
 async function fetchCompetitionData() {
-  const response = await fetch("/api/competition", { cache: "no-store" });
+  const response = await fetch("/api/competition");
 
   if (!response.ok) return null;
 
@@ -185,9 +186,11 @@ function startMatchStore(store: MatchStore) {
     }
   };
 
-  const timeout = window.setTimeout(refreshLiveMatch, 0);
-  const interval = window.setInterval(refreshLiveMatch, 15000);
   const supabase = store.configured ? createBrowserSupabaseClient() : null;
+  const timeout = window.setTimeout(refreshLiveMatch, 0);
+  const interval = supabase
+    ? undefined
+    : window.setInterval(refreshLiveMatch, fallbackPollingIntervalMs);
   const channelName = `match-row-${store.match.id}-${Date.now()}-${Math.random()
     .toString(36)
     .slice(2)}`;
@@ -213,7 +216,7 @@ function startMatchStore(store: MatchStore) {
   store.cleanup = () => {
     active = false;
     window.clearTimeout(timeout);
-    window.clearInterval(interval);
+    if (interval !== undefined) window.clearInterval(interval);
     if (channel) {
       void supabase?.removeChannel(channel);
     }
@@ -271,15 +274,17 @@ export function useLiveMatchEvents(
       const nextEvents = await fetchLiveMatchEvents(matchId);
       if (active && nextEvents) setLiveEvents(nextEvents);
     };
-    const timeout = window.setTimeout(refreshLiveEvents, 0);
-    const interval = window.setInterval(refreshLiveEvents, 15000);
     const supabase = configured ? createBrowserSupabaseClient() : null;
+    const timeout = window.setTimeout(refreshLiveEvents, 0);
+    const interval = supabase
+      ? undefined
+      : window.setInterval(refreshLiveEvents, fallbackPollingIntervalMs);
 
     if (!supabase) {
       return () => {
         active = false;
         window.clearTimeout(timeout);
-        window.clearInterval(interval);
+        if (interval !== undefined) window.clearInterval(interval);
       };
     }
 
@@ -318,7 +323,7 @@ export function useLiveMatchEvents(
     return () => {
       active = false;
       window.clearTimeout(timeout);
-      window.clearInterval(interval);
+      if (interval !== undefined) window.clearInterval(interval);
       supabase.removeChannel(channel);
     };
   }, [configured, matchId]);
@@ -351,15 +356,17 @@ export function useLiveCompetitionData(initialData: CompetitionData) {
       refreshTimeout = window.setTimeout(refreshLiveData, 150);
     };
 
-    const timeout = window.setTimeout(refreshLiveData, 0);
-    const interval = window.setInterval(refreshLiveData, 15000);
     const supabase = configured ? createBrowserSupabaseClient() : null;
+    const timeout = window.setTimeout(refreshLiveData, 0);
+    const interval = supabase
+      ? undefined
+      : window.setInterval(refreshLiveData, fallbackPollingIntervalMs);
 
     if (!supabase) {
       return () => {
         active = false;
         window.clearTimeout(timeout);
-        window.clearInterval(interval);
+        if (interval !== undefined) window.clearInterval(interval);
         if (refreshTimeout !== undefined) window.clearTimeout(refreshTimeout);
       };
     }
@@ -400,7 +407,7 @@ export function useLiveCompetitionData(initialData: CompetitionData) {
     return () => {
       active = false;
       window.clearTimeout(timeout);
-      window.clearInterval(interval);
+      if (interval !== undefined) window.clearInterval(interval);
       if (refreshTimeout !== undefined) window.clearTimeout(refreshTimeout);
       supabase.removeChannel(channel);
     };

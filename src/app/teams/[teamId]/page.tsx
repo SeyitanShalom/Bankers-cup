@@ -11,7 +11,15 @@ import {
   getTeamPlayers,
 } from "@/lib/tournament";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
+
+export async function generateStaticParams() {
+  const data = await getCompetitionData();
+
+  return data.teams.map((team) => ({
+    teamId: team.id,
+  }));
+}
 
 export default async function TeamDetailPage({
   params,
