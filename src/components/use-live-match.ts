@@ -43,13 +43,15 @@ type SupabaseMatchEventPayload = {
 };
 
 const emptyMatchEvents: MatchEvent[] = [];
-const fallbackPollingIntervalMs = 60000;
+const fallbackPollingIntervalMs = 5000;
+const realtimeFallbackPollingIntervalMs = 10000;
 
 type MatchListener = (match: Match) => void;
 
 type MatchStore = {
   match: Match;
   configured: boolean;
+  enablePolling: boolean;
   listeners: Set<MatchListener>;
   subscriberCount: number;
   cleanup: (() => void) | null;
@@ -112,8 +114,21 @@ function mapPayloadEvent(payload: SupabaseMatchEventPayload): MatchEvent {
   };
 }
 
+function getCompetitionApiUrl() {
+  return `/api/competition?refresh=${Date.now()}`;
+}
+
+function sameJsonSnapshot(a: unknown, b: unknown) {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
 async function fetchCompetitionData() {
-  const response = await fetch("/api/competition");
+  const response = await fetch(getCompetitionApiUrl(), {
+    cache: "no-store",
+    headers: {
+      "Cache-Control": "no-cache",
+    },
+  });
 
   if (!response.ok) return null;
 
@@ -141,14 +156,19 @@ function upsertEvent(events: MatchEvent[], nextEvent: MatchEvent) {
 }
 
 function setMatchStoreValue(store: MatchStore, match: Match) {
+  if (sameJsonSnapshot(store.match, match)) {
+    return;
+  }
+
   store.match = match;
   store.listeners.forEach((listener) => listener(match));
 }
 
-function createMatchStore(match: Match, configured: boolean): MatchStore {
+function createMatchStore(match: Match, configured: boolean, enablePolling: boolean): MatchStore {
   const store: MatchStore = {
     match,
     configured,
+    enablePolling,
     listeners: new Set(),
     subscriberCount: 0,
     cleanup: null,
@@ -158,19 +178,23 @@ function createMatchStore(match: Match, configured: boolean): MatchStore {
   return store;
 }
 
-function getMatchStore(match: Match, configured: boolean) {
+function getMatchStore(match: Match, configured: boolean, enablePolling: boolean) {
   const existingStore = matchStores.get(match.id);
 
   if (!existingStore) {
-    return createMatchStore(match, configured);
+    return createMatchStore(match, configured, enablePolling);
   }
 
-  if (existingStore.configured !== configured) {
+  if (
+    existingStore.configured !== configured ||
+    existingStore.enablePolling !== enablePolling
+  ) {
     existingStore.cleanup?.();
     matchStores.delete(match.id);
-    return createMatchStore(match, configured);
+    return createMatchStore(match, configured, enablePolling);
   }
 
+  existingStore.match = match;
   return existingStore;
 }
 
@@ -189,7 +213,9 @@ function startMatchStore(store: MatchStore) {
   const supabase = store.configured ? createBrowserSupabaseClient() : null;
   const timeout = window.setTimeout(refreshLiveMatch, 0);
   const interval = supabase
-    ? undefined
+    ? store.enablePolling
+      ? window.setInterval(refreshLiveMatch, realtimeFallbackPollingIntervalMs)
+      : undefined
     : window.setInterval(refreshLiveMatch, fallbackPollingIntervalMs);
   const channelName = `match-row-${store.match.id}-${Date.now()}-${Math.random()
     .toString(36)
@@ -227,9 +253,10 @@ function startMatchStore(store: MatchStore) {
 function subscribeToMatchStore(
   match: Match,
   configured: boolean,
+  enablePolling: boolean,
   listener: MatchListener,
 ) {
-  const store = getMatchStore(match, configured);
+  const store = getMatchStore(match, configured, enablePolling);
 
   store.listeners.add(listener);
   store.subscriberCount += 1;
@@ -250,13 +277,17 @@ function subscribeToMatchStore(
   };
 }
 
-export function useLiveMatch(match: Match) {
+export function useLiveMatch(
+  match: Match,
+  options: { enablePolling?: boolean } = {},
+) {
   const [liveMatch, setLiveMatch] = useState(match);
   const configured = hasSupabaseConfig();
+  const enablePolling = options.enablePolling ?? false;
 
   useEffect(() => {
-    return subscribeToMatchStore(match, configured, setLiveMatch);
-  }, [configured, match]);
+    return subscribeToMatchStore(match, configured, enablePolling, setLiveMatch);
+  }, [configured, enablePolling, match]);
 
   return liveMatch;
 }
@@ -272,12 +303,16 @@ export function useLiveMatchEvents(
     let active = true;
     const refreshLiveEvents = async () => {
       const nextEvents = await fetchLiveMatchEvents(matchId);
-      if (active && nextEvents) setLiveEvents(nextEvents);
+      if (active && nextEvents) {
+        setLiveEvents((current) =>
+          sameJsonSnapshot(current, nextEvents) ? current : nextEvents,
+        );
+      }
     };
     const supabase = configured ? createBrowserSupabaseClient() : null;
     const timeout = window.setTimeout(refreshLiveEvents, 0);
     const interval = supabase
-      ? undefined
+      ? window.setInterval(refreshLiveEvents, realtimeFallbackPollingIntervalMs)
       : window.setInterval(refreshLiveEvents, fallbackPollingIntervalMs);
 
     if (!supabase) {
@@ -318,7 +353,11 @@ export function useLiveMatchEvents(
           );
         },
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+          void refreshLiveEvents();
+        }
+      });
 
     return () => {
       active = false;
@@ -342,7 +381,11 @@ export function useLiveCompetitionData(initialData: CompetitionData) {
     const refreshLiveData = async () => {
       try {
         const nextData = await fetchCompetitionData();
-        if (active && nextData) setLiveData(nextData);
+        if (active && nextData) {
+          setLiveData((current) =>
+            sameJsonSnapshot(current, nextData) ? current : nextData,
+          );
+        }
       } catch {
         // Keep the current snapshot if a background refresh misses.
       }
@@ -359,7 +402,7 @@ export function useLiveCompetitionData(initialData: CompetitionData) {
     const supabase = configured ? createBrowserSupabaseClient() : null;
     const timeout = window.setTimeout(refreshLiveData, 0);
     const interval = supabase
-      ? undefined
+      ? window.setInterval(refreshLiveData, realtimeFallbackPollingIntervalMs)
       : window.setInterval(refreshLiveData, fallbackPollingIntervalMs);
 
     if (!supabase) {
@@ -402,7 +445,16 @@ export function useLiveCompetitionData(initialData: CompetitionData) {
         { event: "*", schema: "public", table: "players" },
         scheduleRefresh,
       )
-      .subscribe();
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "news_posts" },
+        scheduleRefresh,
+      )
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+          scheduleRefresh();
+        }
+      });
 
     return () => {
       active = false;

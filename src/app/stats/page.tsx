@@ -10,7 +10,7 @@ import {
   calculatePlayerStats,
 } from "@/lib/tournament";
 
-export const revalidate = 60;
+export const dynamic = "force-dynamic";
 
 export default async function StatsPage() {
   const data = await getCompetitionData();

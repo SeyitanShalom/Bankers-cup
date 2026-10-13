@@ -9,7 +9,9 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const competitionCacheHeaders = {
-  "Cache-Control": "public, max-age=0, s-maxage=30, stale-while-revalidate=120",
+  "Cache-Control": "no-store, no-cache, max-age=0, must-revalidate",
+  "CDN-Cache-Control": "no-store",
+  "Netlify-CDN-Cache-Control": "no-store",
 };
 
 function isLocalWriteAllowed(request: Request) {

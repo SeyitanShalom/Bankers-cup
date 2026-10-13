@@ -16,7 +16,7 @@ import {
   MATCH_DURATION_MINUTES,
 } from "@/lib/tournament";
 
-export const revalidate = 60;
+export const dynamic = "force-dynamic";
 
 export async function generateStaticParams() {
   const data = await getCompetitionData();
@@ -68,7 +68,7 @@ export default async function MatchDetailPage({
               </p>
               <h1 className="text-xl font-black sm:text-2xl">{home.name} vs {away.name}</h1>
             </div>
-            <LiveMatchStatus match={match} />
+            <LiveMatchStatus match={match} enablePolling />
           </div>
         </div>
 

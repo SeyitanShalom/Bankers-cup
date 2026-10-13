@@ -236,8 +236,13 @@ export async function getCompetitionData(): Promise<CompetitionData> {
       supabase.from("teams").select("*").order("name"),
       supabase.from("players").select("*").order("name"),
       supabase.from("matches").select("*").order("kickoff"),
-      supabase.from("match_events").select("*"),
-      supabase.from("penalty_shootout_events").select("*").order("kick_number"),
+      supabase.from("match_events").select("*").order("created_at").order("id"),
+      supabase
+        .from("penalty_shootout_events")
+        .select("*")
+        .order("match_id")
+        .order("team_id")
+        .order("kick_number"),
       supabase.from("news_posts").select("*").order("published_at", { ascending: false }),
     ]);
 

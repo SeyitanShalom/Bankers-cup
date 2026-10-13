@@ -11,7 +11,7 @@ import {
   getTeamPlayers,
 } from "@/lib/tournament";
 
-export const revalidate = 60;
+export const dynamic = "force-dynamic";
 
 export async function generateStaticParams() {
   const data = await getCompetitionData();

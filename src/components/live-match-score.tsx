@@ -6,6 +6,7 @@ import { useLiveMatch } from "./use-live-match";
 type LiveMatchScoreProps = {
   match: Match;
   variant?: "card" | "large";
+  enablePolling?: boolean;
 };
 
 function hasPenaltyScore(match: Match) {
@@ -17,8 +18,14 @@ function hasPenaltyScore(match: Match) {
   );
 }
 
-export function LiveMatchScore({ match, variant = "card" }: LiveMatchScoreProps) {
-  const liveMatch = useLiveMatch(match);
+export function LiveMatchScore({
+  match,
+  variant = "card",
+  enablePolling,
+}: LiveMatchScoreProps) {
+  const liveMatch = useLiveMatch(match, {
+    enablePolling: enablePolling ?? (variant === "large" || match.status === "live"),
+  });
   const showScore = liveMatch.status === "completed" || liveMatch.status === "live";
 
   if (variant === "large") {

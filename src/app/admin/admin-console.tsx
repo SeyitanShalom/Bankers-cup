@@ -127,7 +127,12 @@ function slugify(value: string) {
 }
 
 async function fetchCompetitionData() {
-  const response = await fetch("/api/competition", { cache: "no-store" });
+  const response = await fetch(`/api/competition?refresh=${Date.now()}`, {
+    cache: "no-store",
+    headers: {
+      "Cache-Control": "no-cache",
+    },
+  });
 
   if (!response.ok) {
     throw new Error("Unable to load competition data");

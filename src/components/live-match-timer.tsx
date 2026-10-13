@@ -9,10 +9,17 @@ import { useLiveMatch } from "./use-live-match";
 type LiveMatchTimerProps = {
   match: Match;
   variant?: "compact" | "large";
+  enablePolling?: boolean;
 };
 
-export function LiveMatchTimer({ match, variant = "compact" }: LiveMatchTimerProps) {
-  const liveMatch = useLiveMatch(match);
+export function LiveMatchTimer({
+  match,
+  variant = "compact",
+  enablePolling,
+}: LiveMatchTimerProps) {
+  const liveMatch = useLiveMatch(match, {
+    enablePolling: enablePolling ?? (variant === "large" || match.status === "live"),
+  });
   const [now, setNow] = useState<number | undefined>(undefined);
   const snapshot = getTimerSnapshot(liveMatch, now);
   const shouldShow =
