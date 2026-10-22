@@ -8,7 +8,7 @@ A Next.js competition management website for a 14-team bankers' football tournam
 - Supabase Postgres for teams, players, matches, events, news, and stats.
 - Supabase Auth for the single admin account.
 - Supabase Storage for team logos.
-- Vercel for hosting.
+- Netlify for hosting.
 
 ## Local Development
 
@@ -17,6 +17,9 @@ npm run dev
 ```
 
 Open `http://localhost:3000`.
+
+Optional GA4 setup, consent behavior, Netlify deployment steps, and browser checks
+are documented in [docs/analytics.md](docs/analytics.md).
 
 Without Supabase environment variables, the site uses local JSON data instead of a remote database.
 

@@ -1,5 +1,7 @@
 import Image from "next/image";
 import { Mail, Phone } from "lucide-react";
+import Link from "next/link";
+import { AnalyticsSettingsButton } from "@/components/analytics";
 
 export function SiteFooter() {
   return (
@@ -27,6 +29,10 @@ export function SiteFooter() {
             <span className="font-black text-zinc-800">Cre8iq</span>
           </p>
           <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 lg:justify-end">
+            <Link href="/privacy" className="transition hover:text-emerald-700">
+              Analytics privacy
+            </Link>
+            <AnalyticsSettingsButton />
             <a
               href="mailto:seyitanoluwapelumi@gmail.com"
               className="inline-flex items-center gap-1.5 transition hover:text-emerald-700"
