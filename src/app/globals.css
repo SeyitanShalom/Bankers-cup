@@ -244,7 +244,38 @@ textarea {
   display: grid;
   place-items: center;
   padding: 2rem;
+  background: transparent;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+
+.site-loader-initial {
   background: var(--background);
+}
+
+.site-loader-panel {
+  width: min(100%, 22rem);
+  padding: 2rem 1.5rem;
+  border-radius: 1.5rem;
+  background: #fff;
+  box-shadow: 0 16px 48px rgb(24 24 27 / 0.14);
+}
+
+@keyframes loader-letter-write {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.site-loader-writing {
+  white-space: pre;
+}
+
+.site-loader-letter {
+  animation: loader-letter-write 1ms step-end both;
 }
 
 @keyframes brand-logo-breathe {
@@ -328,7 +359,8 @@ textarea {
   .sheen::after,
   .brand-logos-loading .brand-logo,
   .brand-logos-loading .brand-logo-divider,
-  .site-loader-dot {
+  .site-loader-dot,
+  .site-loader-letter {
     animation: none !important;
   }
 

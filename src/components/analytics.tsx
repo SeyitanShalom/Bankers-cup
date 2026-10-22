@@ -1,7 +1,7 @@
 "use client";
 
 import { GoogleAnalytics } from "@next/third-parties/google";
-import Link from "next/link";
+import Link from "@/components/navigation-link";
 import Script from "next/script";
 import { useEffect, useState, useSyncExternalStore } from "react";
 

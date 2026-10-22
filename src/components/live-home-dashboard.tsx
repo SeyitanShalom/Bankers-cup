@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
+import Link from "@/components/navigation-link";
 import { useMemo } from "react";
 import { ArrowRight, CalendarDays, Shield, Timer, Trophy } from "lucide-react";
 import { MatchCard } from "@/components/match-card";

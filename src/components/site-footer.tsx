@@ -1,6 +1,6 @@
 import Image from "next/image";
 import { Mail, Phone } from "lucide-react";
-import Link from "next/link";
+import Link from "@/components/navigation-link";
 import { AnalyticsSettingsButton } from "@/components/analytics";
 
 export function SiteFooter() {

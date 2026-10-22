@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/navigation-link";
 import { ArrowRight, CalendarDays, MapPin, Trophy } from "lucide-react";
 import { formatKickoff, formatStage, getTeam } from "@/lib/tournament";
 import type { Match, MatchStatus, Team } from "@/lib/types";
