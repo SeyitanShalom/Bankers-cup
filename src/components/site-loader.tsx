@@ -28,11 +28,11 @@ export function SiteLoader({ initial = false }: { initial?: boolean }) {
     >
       <div className="site-loader-panel flex flex-col items-center text-center">
         <BrandLogos variant="loading" />
-        <p className="mt-7 text-xl font-black tracking-tight text-zinc-950 sm:text-2xl">
-          <WrittenText text="Akure Bankers' Cup" />
+        <p className="mt-7 max-w-full text-xl font-black tracking-tight text-zinc-950 sm:text-2xl">
+          <WrittenText text="Akure Bankers' Cup 2026" />
         </p>
         <p className="mt-1 text-xs font-bold text-emerald-700 sm:text-sm">
-          <WrittenText text="Football Competition" delay={900} />
+          <WrittenText text="Football Competition" delay={1200} />
         </p>
         <div className="mt-7 flex items-center gap-2 text-xs font-semibold text-zinc-500">
           <span>Loading</span>

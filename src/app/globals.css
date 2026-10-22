@@ -271,7 +271,7 @@ textarea {
 }
 
 .site-loader-writing {
-  white-space: pre;
+  white-space: pre-wrap;
 }
 
 .site-loader-letter {
