@@ -1,8 +1,7 @@
 "use client";
-import Image from "next/image";
-
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { BrandLogos } from "@/components/brand-logos";
 import {
   BarChart3,
   CalendarDays,
@@ -52,19 +51,7 @@ export function SiteHeader() {
             </span>
           </span> */}
           <div className="flex min-w-0 items-center gap-2">
-            <Image
-              src="/CBN logo.png"
-              alt="Bankers Cup Logo"
-              width={35}
-              height={35}
-            />
-            <div className="w-[1px] h-8 bg-gray-900"></div>
-            <Image
-              src="/Bankers' Committee logo (1).png"
-              alt="Bankers Cup Logo"
-              width={35}
-              height={35}
-            />
+            <BrandLogos />
             <span className="min-w-0">
               <span className="block truncate text-base font-black leading-tight text-zinc-950">
                 Akure Bankers&apos; Cup

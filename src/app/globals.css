@@ -237,6 +237,80 @@ textarea {
   transform: translateX(-120%);
 }
 
+.site-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 2rem;
+  background: var(--background);
+}
+
+@keyframes brand-logo-breathe {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  45% {
+    transform: translateY(-5px) scale(1.045);
+  }
+}
+
+@keyframes brand-divider-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scaleY(0.8);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scaleY(1);
+  }
+}
+
+@keyframes loading-dot-pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.brand-logos-loading {
+  gap: 1.25rem;
+}
+
+.brand-logos-loading .brand-logo {
+  animation: brand-logo-breathe 1.6s ease-in-out infinite;
+}
+
+.brand-logos-loading .brand-logo-secondary {
+  animation-delay: 0.24s;
+}
+
+.brand-logos-loading .brand-logo-divider {
+  animation: brand-divider-pulse 1.6s ease-in-out infinite;
+}
+
+.site-loader-dot {
+  width: 0.3rem;
+  height: 0.3rem;
+  border-radius: 50%;
+  background: #047857;
+  animation: loading-dot-pulse 1.2s ease-in-out infinite;
+}
+
+.site-loader-dot:nth-child(2) {
+  animation-delay: 0.16s;
+}
+
+.site-loader-dot:nth-child(3) {
+  animation-delay: 0.32s;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -251,7 +325,10 @@ textarea {
   .live-blink,
   .live-pulse-dot,
   .score-glow,
-  .sheen::after {
+  .sheen::after,
+  .brand-logos-loading .brand-logo,
+  .brand-logos-loading .brand-logo-divider,
+  .site-loader-dot {
     animation: none !important;
   }
 
