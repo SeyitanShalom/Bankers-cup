@@ -34,7 +34,7 @@ export default async function TeamDetailPage({
     notFound();
   }
 
-  const standings = calculateStandings(data.teams, data.matches);
+  const standings = calculateStandings(data.teams, data.matches, data.events);
   const row = standings.find((standing) => standing.team.id === team.id);
   const squad = getTeamPlayers(data.players, team.id);
   const matches = data.matches

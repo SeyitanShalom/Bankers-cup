@@ -50,10 +50,10 @@ function getStageMatches(matches: Match[], stage: MatchStage, limit: number) {
 
 function getPlannedKnockoutDate(matchId: string) {
   const dates: Record<string, string> = {
-    "qf-1": "31 Oct 2026",
-    "qf-2": "1 Nov 2026",
-    "qf-3": "31 Oct 2026",
-    "qf-4": "1 Nov 2026",
+    "qf-1": "1 Nov 2026",
+    "qf-2": "31 Oct 2026",
+    "qf-3": "1 Nov 2026",
+    "qf-4": "31 Oct 2026",
     "sf-1": "7 Nov 2026",
     "sf-2": "7 Nov 2026",
     "third-place": "14 Nov 2026",

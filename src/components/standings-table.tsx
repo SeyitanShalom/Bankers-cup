@@ -15,11 +15,18 @@ export function StandingsTable({ rows, compact = false }: StandingsTableProps) {
   const resultCellClassName = "hidden px-3 py-3 text-center font-semibold text-zinc-700 sm:table-cell";
   const goalHeaderClassName = "hidden w-12 px-3 py-3 text-center md:table-cell";
   const goalCellClassName = "hidden px-3 py-3 text-center font-semibold text-zinc-700 md:table-cell";
+  const cardHeaderClassName = "hidden w-12 px-3 py-3 text-center lg:table-cell";
+  const cardCellClassName = "hidden px-3 py-3 text-center font-semibold text-zinc-700 lg:table-cell";
 
   return (
     <div className="animate-rise-in motion-card overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
       <div>
         <table className={tableClassName}>
+          <caption className="caption-bottom border-t border-zinc-200 bg-zinc-50 px-3 py-3 text-left text-xs text-zinc-600 sm:px-4">
+            {!compact && "Ranked by points, goal difference, goals scored, then fair play. "}
+            Fair play (FP): each yellow or red card adds 1 penalty point; fewer is better.
+            {!compact && " Includes player and coach cards from completed league matches only."}
+          </caption>
           <thead className="bg-zinc-950 text-left text-xs uppercase text-white">
             <tr>
               <th className="w-9 px-2 py-3 sm:w-12 sm:px-4">#</th>
@@ -35,6 +42,19 @@ export function StandingsTable({ rows, compact = false }: StandingsTableProps) {
                 </>
               ) : null}
               <th className="w-10 px-1 py-3 text-center sm:w-12 sm:px-3">GD</th>
+              {!compact ? (
+                <>
+                  <th className={cardHeaderClassName} title="Yellow cards">
+                    YC
+                  </th>
+                  <th className={cardHeaderClassName} title="Red cards">
+                    RC
+                  </th>
+                  <th className={cardHeaderClassName} title="Fair-play penalty points: lower is better">
+                    FP
+                  </th>
+                </>
+              ) : null}
               <th className="w-11 px-2 py-3 text-center sm:w-16 sm:px-4">Pts</th>
             </tr>
           </thead>
@@ -55,6 +75,13 @@ export function StandingsTable({ rows, compact = false }: StandingsTableProps) {
                       {row.qualified && (
                         <p className="text-xs font-bold text-emerald-700">Top 8 zone</p>
                       )}
+                      <p
+                        className={`${compact ? "" : "lg:hidden "}text-[10px] font-semibold text-zinc-600 sm:text-xs`}
+                      >
+                        <span className="whitespace-nowrap">YC {row.yellowCards}</span>{" · "}
+                        <span className="whitespace-nowrap">RC {row.redCards}</span>{" · "}
+                        <span className="whitespace-nowrap">FP {row.fairPlayPoints}</span>
+                      </p>
                     </div>
                   </div>
                 </td>
@@ -78,6 +105,13 @@ export function StandingsTable({ rows, compact = false }: StandingsTableProps) {
                   {row.goalDifference > 0 ? "+" : ""}
                   {row.goalDifference}
                 </td>
+                {!compact ? (
+                  <>
+                    <td className={cardCellClassName}>{row.yellowCards}</td>
+                    <td className={cardCellClassName}>{row.redCards}</td>
+                    <td className={cardCellClassName}>{row.fairPlayPoints}</td>
+                  </>
+                ) : null}
                 <td className="px-2 py-3 text-center text-sm font-black text-zinc-950 sm:px-4 sm:text-base">
                   {row.points}
                 </td>

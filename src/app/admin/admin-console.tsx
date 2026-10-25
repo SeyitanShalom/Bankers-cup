@@ -560,7 +560,10 @@ export function AdminConsole({ initialData }: AdminConsoleProps) {
     useState<EventRecipientType>("player");
   const [selectedEventPlayerId, setSelectedEventPlayerId] = useState("");
   const supabase = useMemo(() => createBrowserSupabaseClient(), []);
-  const standings = useMemo(() => calculateStandings(data.teams, data.matches), [data]);
+  const standings = useMemo(
+    () => calculateStandings(data.teams, data.matches, data.events),
+    [data],
+  );
   const playerStats = useMemo(() => calculatePlayerStats(data), [data]);
   const selectedMatch = data.matches.find((match) => match.id === selectedMatchId);
   const canWriteLive =

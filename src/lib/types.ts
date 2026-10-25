@@ -119,6 +119,9 @@ export type StandingRow = {
   goalsAgainst: number;
   goalDifference: number;
   points: number;
+  yellowCards: number;
+  redCards: number;
+  fairPlayPoints: number;
   qualified: boolean;
 };
 

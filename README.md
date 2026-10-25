@@ -46,6 +46,8 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 
 - 14 teams in one group.
 - Top 8 qualify for knockouts.
+- Standings are ranked by points, goal difference, goals scored, then fair play (lower penalty total wins), with team name as the final fallback.
+- Each recorded yellow or red card adds 1 fair-play penalty point, including player and coach cards from completed league-phase matches only. Knockout cards do not affect league standings.
 - Matches are 60 minutes: 30 minutes each half.
 - Added time is supported, for example `30+1` and `60+2`.
 - Knockout draws go straight to penalties.

@@ -141,7 +141,11 @@ export function getCleanSheetGoalkeeperId(
     : match.awayCleanSheetGoalkeeperId ?? null;
 }
 
-export function calculateStandings(teams: Team[], matches: Match[]): StandingRow[] {
+export function calculateStandings(
+  teams: Team[],
+  matches: Match[],
+  events: MatchEvent[],
+): StandingRow[] {
   const rows = new Map<string, Omit<StandingRow, "rank" | "qualified">>();
 
   teams.forEach((team) => {
@@ -155,47 +159,78 @@ export function calculateStandings(teams: Team[], matches: Match[]): StandingRow
       goalsAgainst: 0,
       goalDifference: 0,
       points: 0,
+      yellowCards: 0,
+      redCards: 0,
+      fairPlayPoints: 0,
     });
   });
 
-  matches
-    .filter(
-      (match) =>
-        match.stage === "group" &&
-        match.status === "completed" &&
-        match.homeScore !== null &&
-        match.awayScore !== null,
-    )
-    .forEach((match) => {
-      const home = rows.get(match.homeTeamId);
-      const away = rows.get(match.awayTeamId);
+  const completedLeagueMatches = matches.filter(
+    (match) =>
+      match.stage === "group" &&
+      match.status === "completed" &&
+      match.homeScore !== null &&
+      match.awayScore !== null,
+  );
 
-      if (!home || !away || match.homeScore === null || match.awayScore === null) {
-        return;
-      }
+  completedLeagueMatches.forEach((match) => {
+    const home = rows.get(match.homeTeamId);
+    const away = rows.get(match.awayTeamId);
 
-      home.played += 1;
-      away.played += 1;
-      home.goalsFor += match.homeScore;
-      home.goalsAgainst += match.awayScore;
-      away.goalsFor += match.awayScore;
-      away.goalsAgainst += match.homeScore;
+    if (!home || !away || match.homeScore === null || match.awayScore === null) {
+      return;
+    }
 
-      if (match.homeScore > match.awayScore) {
-        home.won += 1;
-        away.lost += 1;
-        home.points += 3;
-      } else if (match.homeScore < match.awayScore) {
-        away.won += 1;
-        home.lost += 1;
-        away.points += 3;
-      } else {
-        home.drawn += 1;
-        away.drawn += 1;
-        home.points += 1;
-        away.points += 1;
-      }
-    });
+    home.played += 1;
+    away.played += 1;
+    home.goalsFor += match.homeScore;
+    home.goalsAgainst += match.awayScore;
+    away.goalsFor += match.awayScore;
+    away.goalsAgainst += match.homeScore;
+
+    if (match.homeScore > match.awayScore) {
+      home.won += 1;
+      away.lost += 1;
+      home.points += 3;
+    } else if (match.homeScore < match.awayScore) {
+      away.won += 1;
+      home.lost += 1;
+      away.points += 3;
+    } else {
+      home.drawn += 1;
+      away.drawn += 1;
+      home.points += 1;
+      away.points += 1;
+    }
+  });
+
+  const matchById = new Map(completedLeagueMatches.map((match) => [match.id, match]));
+
+  events.forEach((event) => {
+    if (event.type !== "yellow_card" && event.type !== "red_card") {
+      return;
+    }
+
+    const match = matchById.get(event.matchId);
+    const row = rows.get(event.teamId);
+
+    if (
+      !match ||
+      !row ||
+      (event.teamId !== match.homeTeamId && event.teamId !== match.awayTeamId)
+    ) {
+      return;
+    }
+
+    if (event.type === "yellow_card") {
+      row.yellowCards += 1;
+    } else {
+      row.redCards += 1;
+    }
+
+    // Each recorded player or coach yellow/red card adds one penalty point.
+    row.fairPlayPoints += 1;
+  });
 
   return Array.from(rows.values())
     .map((row) => ({
@@ -206,6 +241,7 @@ export function calculateStandings(teams: Team[], matches: Match[]): StandingRow
       if (b.points !== a.points) return b.points - a.points;
       if (b.goalDifference !== a.goalDifference) return b.goalDifference - a.goalDifference;
       if (b.goalsFor !== a.goalsFor) return b.goalsFor - a.goalsFor;
+      if (a.fairPlayPoints !== b.fairPlayPoints) return a.fairPlayPoints - b.fairPlayPoints;
       return a.team.name.localeCompare(b.team.name);
     })
     .map((row, index) => ({

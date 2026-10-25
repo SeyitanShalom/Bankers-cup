@@ -43,7 +43,10 @@ function getMatchRenderKey(match: CompetitionData["matches"][number]) {
 
 export function LiveHomeDashboard({ initialData }: LiveHomeDashboardProps) {
   const data = useLiveCompetitionData(initialData);
-  const standings = useMemo(() => calculateStandings(data.teams, data.matches), [data]);
+  const standings = useMemo(
+    () => calculateStandings(data.teams, data.matches, data.events),
+    [data],
+  );
   const playerStats = useMemo(() => calculatePlayerStats(data), [data]);
   const cleanSheets = useMemo(() => calculateCleanSheets(data), [data]);
   const upcomingMatches = useMemo(() => getUpcomingMatches(data.matches, 4), [data]);
