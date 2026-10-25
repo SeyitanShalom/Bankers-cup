@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { calculateStandings, getKnockoutSeedSlots } from "../src/lib/tournament.ts";
+import {
+  calculateStandings,
+  formatKickoff,
+  getKnockoutSeedSlots,
+  getQuarterFinalMatchesBySeed,
+} from "../src/lib/tournament.ts";
 
 const team = (id, name = id) => ({ id, name, logoUrl: null });
 const match = (id, homeTeamId, awayTeamId, overrides = {}) => ({
@@ -146,4 +151,71 @@ test("confirmed knockout seeds follow the fair-play standings", () => {
   assert.equal(seeds[0].row.team.id, "w");
   assert.equal(seeds[1].row.team.id, "p");
   assert.ok(seeds.every((seed) => seed.status === "confirmed"));
+});
+
+function quarterFinalSetup() {
+  const teams = Array.from({ length: 8 }, (_, i) => team(`t${i + 1}`, `Team ${i + 1}`));
+  const slots = calculateStandings(teams, [], []).map((row) => ({
+    seed: row.rank,
+    row,
+    status: "confirmed",
+  }));
+  const fixtures = [
+    match("qf-1", "t1", "t8", { stage: "quarter_final", kickoff: "2026-11-01T12:00:00Z" }),
+    match("qf-2", "t4", "t5", { stage: "quarter_final", kickoff: "2026-10-31T08:00:00Z" }),
+    match("qf-3", "t2", "t7", { stage: "quarter_final", kickoff: "2026-11-01T13:30:00Z" }),
+    match("qf-4", "t3", "t6", { stage: "quarter_final", kickoff: "2026-10-31T09:30:00Z" }),
+  ];
+  return { slots, fixtures };
+}
+
+test("quarter-final fixtures follow seed pairings when kickoff order differs", () => {
+  const { slots, fixtures } = quarterFinalSetup();
+  const chronological = [fixtures[1], fixtures[3], fixtures[0], fixtures[2]];
+  const original = JSON.stringify(chronological);
+  const ordered = getQuarterFinalMatchesBySeed(slots, chronological);
+
+  assert.deepEqual(ordered.map((fixture) => fixture.id), ["qf-1", "qf-2", "qf-3", "qf-4"]);
+  assert.equal(ordered[0].kickoff, "2026-11-01T12:00:00Z");
+  assert.equal(ordered[1].kickoff, "2026-10-31T08:00:00Z");
+  assert.equal(JSON.stringify(chronological), original);
+
+  const rescheduled = chronological.map((fixture) => ({
+    ...fixture,
+    kickoff: fixture.id === "qf-1" ? "2026-10-30T09:00:00Z" : fixture.kickoff,
+  }));
+  assert.deepEqual(getQuarterFinalMatchesBySeed(slots, rescheduled).map((fixture) => fixture.id),
+    ["qf-1", "qf-2", "qf-3", "qf-4"]);
+});
+
+test("missing or unlocked quarter-final pairings do not borrow another fixture's date", () => {
+  const { slots, fixtures } = quarterFinalSetup();
+  const leagueFixture = { ...fixtures[0], id: "league", stage: "group" };
+  assert.deepEqual(getQuarterFinalMatchesBySeed(slots, [fixtures[2], leagueFixture]),
+    [undefined, undefined, fixtures[2], undefined]);
+
+  const pending = slots.map((slot) => slot.seed === 7 ? { ...slot, row: null, status: "pending" } : slot);
+  assert.deepEqual(getQuarterFinalMatchesBySeed(pending, fixtures),
+    [fixtures[0], fixtures[1], undefined, fixtures[3]]);
+});
+
+test("reversing the fixture's home and away teams preserves its bracket slot and score", () => {
+  const { slots, fixtures } = quarterFinalSetup();
+  const reversed = {
+    ...fixtures[0],
+    homeTeamId: fixtures[0].awayTeamId,
+    awayTeamId: fixtures[0].homeTeamId,
+    homeScore: 3,
+    awayScore: 2,
+  };
+  const ordered = getQuarterFinalMatchesBySeed(slots, [reversed, ...fixtures.slice(1)]);
+
+  assert.equal(ordered[0], reversed);
+  assert.deepEqual([ordered[0].homeTeamId, ordered[0].awayTeamId, ordered[0].homeScore, ordered[0].awayScore],
+    ["t8", "t1", 3, 2]);
+});
+
+test("kickoff dates and times consistently use WAT, including across midnight", () => {
+  assert.equal(formatKickoff("2026-10-31T08:00:00+00:00"), "31 Oct 2026, 09:00 WAT");
+  assert.equal(formatKickoff("2026-10-31T23:30:00Z"), "1 Nov 2026, 00:30 WAT");
 });

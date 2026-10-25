@@ -1,6 +1,6 @@
 import {
-  formatKickoff,
   getKnockoutSeedSlots,
+  getQuarterFinalMatchesBySeed,
   getTeam,
   isLeaguePhaseComplete,
   LEAGUE_PHASE_MATCHES_PER_TEAM,
@@ -9,14 +9,11 @@ import {
   type KnockoutSeedSlot,
 } from "@/lib/tournament";
 import type { CompetitionData, Match, MatchStage, StandingRow, Team } from "@/lib/types";
-import { StatusPill } from "./status-pill";
 import { TeamCrest } from "./team-crest";
 
 type BracketTeam = {
   label: string;
   team: Team | null;
-  note: string;
-  state: "placeholder" | "clinched" | "confirmed" | "advanced";
 };
 
 type BracketMatch = {
@@ -24,7 +21,6 @@ type BracketMatch = {
   label: string;
   home: BracketTeam;
   away: BracketTeam;
-  plannedDate: string;
   match?: Match;
 };
 
@@ -48,21 +44,6 @@ function getStageMatches(matches: Match[], stage: MatchStage, limit: number) {
     .slice(0, limit);
 }
 
-function getPlannedKnockoutDate(matchId: string) {
-  const dates: Record<string, string> = {
-    "qf-1": "1 Nov 2026",
-    "qf-2": "31 Oct 2026",
-    "qf-3": "1 Nov 2026",
-    "qf-4": "31 Oct 2026",
-    "sf-1": "7 Nov 2026",
-    "sf-2": "7 Nov 2026",
-    "third-place": "14 Nov 2026",
-    final: "14 Nov 2026",
-  };
-
-  return dates[matchId];
-}
-
 function getSeedTeam(seedSlots: KnockoutSeedSlot[], seed: number): BracketTeam {
   const slot = seedSlots.find((item) => item.seed === seed);
   const seedLabel = getSeedLabel(seed);
@@ -71,16 +52,12 @@ function getSeedTeam(seedSlots: KnockoutSeedSlot[], seed: number): BracketTeam {
     return {
       label: seedLabel,
       team: null,
-      note: "Seed open",
-      state: "placeholder",
     };
   }
 
   return {
     label: slot.row.team.name,
     team: slot.row.team,
-    note: slot.status === "confirmed" ? `${seedLabel} confirmed` : `${seedLabel} clinched`,
-    state: slot.status === "confirmed" ? "confirmed" : "clinched",
   };
 }
 
@@ -143,8 +120,6 @@ function getAdvancedTeam(
     return {
       label: advancedTeam.name,
       team: advancedTeam,
-      note: "Advanced",
-      state: "advanced",
     };
   }
 
@@ -152,16 +127,12 @@ function getAdvancedTeam(
     return {
       label: fallbackTeam.name,
       team: fallbackTeam,
-      note: "Fixture set",
-      state: "confirmed",
     };
   }
 
   return {
     label: fallbackLabel,
     team: null,
-    note: "Awaiting winner",
-    state: "placeholder",
   };
 }
 
@@ -177,8 +148,6 @@ function getPlacementTeam(
     return {
       label: placedTeam.name,
       team: placedTeam,
-      note: "Placed",
-      state: "advanced",
     };
   }
 
@@ -186,74 +155,27 @@ function getPlacementTeam(
     return {
       label: fallbackTeam.name,
       team: fallbackTeam,
-      note: "Fixture set",
-      state: "confirmed",
     };
   }
 
   return {
     label: fallbackLabel,
     team: null,
-    note: "Awaiting result",
-    state: "placeholder",
   };
 }
 
-function getFixtureMeta(match?: Match) {
-  if (!match) {
-    return null;
-  }
-
-  const hasScore =
-    match.status === "live" ||
-    match.status === "completed" ||
-    match.homeScore !== null ||
-    match.awayScore !== null;
-  const score = hasScore ? `${match.homeScore ?? 0}-${match.awayScore ?? 0}` : null;
-  const penalties =
-    match.homePenaltyScore !== null &&
-    match.homePenaltyScore !== undefined &&
-    match.awayPenaltyScore !== null &&
-    match.awayPenaltyScore !== undefined
-      ? `Pens ${match.homePenaltyScore}-${match.awayPenaltyScore}`
-      : null;
-
-  return [formatKickoff(match.kickoff), match.venue, score, penalties].filter(Boolean).join(" - ");
-}
-
-function getMatchMeta(match: BracketMatch) {
-  return getFixtureMeta(match.match) ?? `Planned date: ${match.plannedDate}`;
-}
-
-function TeamLine({ slot, align = "left" }: { slot: BracketTeam; align?: "left" | "right" }) {
-  const badgeClassName =
-    slot.state === "placeholder"
-      ? "bg-zinc-100 text-zinc-500"
-      : slot.state === "clinched"
-        ? "bg-amber-100 text-amber-800"
-        : "bg-emerald-100 text-emerald-800";
-
+function TeamLine({ slot }: { slot: BracketTeam }) {
   return (
-    <div
-      className={`flex min-w-0 items-center gap-2 ${
-        align === "right" ? "justify-end text-right" : ""
-      }`}
-    >
-      {align === "left" && slot.team ? <TeamCrest team={slot.team} size="sm" /> : null}
-      <div className="min-w-0">
-        <p className="truncate text-sm font-extrabold leading-5 text-zinc-950">{slot.label}</p>
-        <span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[0.65rem] font-black ${badgeClassName}`}>
-          {slot.note}
-        </span>
-      </div>
-      {align === "right" && slot.team ? <TeamCrest team={slot.team} size="sm" /> : null}
+    <div className="flex min-w-0 flex-col items-center gap-2 text-center">
+      {slot.team ? <TeamCrest team={slot.team} size="sm" /> : null}
+      <p className="break-words text-sm font-extrabold leading-5 text-zinc-950">{slot.label}</p>
     </div>
   );
 }
 
 function buildBracketRounds(data: CompetitionData, standings: StandingRow[]) {
   const seedSlots = getKnockoutSeedSlots(standings, data.matches);
-  const quarterFinalMatches = getStageMatches(data.matches, "quarter_final", 4);
+  const quarterFinalMatches = getQuarterFinalMatchesBySeed(seedSlots, data.matches);
   const semiFinalMatches = getStageMatches(data.matches, "semi_final", 2);
   const thirdPlaceMatch = getStageMatches(data.matches, "third_place", 1)[0];
   const finalMatch = getStageMatches(data.matches, "final", 1)[0];
@@ -266,7 +188,6 @@ function buildBracketRounds(data: CompetitionData, standings: StandingRow[]) {
       label: `QF ${index + 1}`,
       home: getSeedTeam(seedSlots, homeSeed),
       away: getSeedTeam(seedSlots, awaySeed),
-      plannedDate: getPlannedKnockoutDate(id),
       match: quarterFinalMatches[index],
     };
   });
@@ -287,7 +208,6 @@ function buildBracketRounds(data: CompetitionData, standings: StandingRow[]) {
         "Winner of QF 2",
         getFallbackTeam(data.teams, semiFinalMatches[0], "away"),
       ),
-      plannedDate: getPlannedKnockoutDate("sf-1"),
       match: semiFinalMatches[0],
     },
     {
@@ -305,7 +225,6 @@ function buildBracketRounds(data: CompetitionData, standings: StandingRow[]) {
         "Winner of QF 4",
         getFallbackTeam(data.teams, semiFinalMatches[1], "away"),
       ),
-      plannedDate: getPlannedKnockoutDate("sf-2"),
       match: semiFinalMatches[1],
     },
   ];
@@ -325,7 +244,6 @@ function buildBracketRounds(data: CompetitionData, standings: StandingRow[]) {
       "Loser of SF 2",
       getFallbackTeam(data.teams, thirdPlaceMatch, "away"),
     ),
-    plannedDate: getPlannedKnockoutDate("third-place"),
     match: thirdPlaceMatch,
   };
 
@@ -344,7 +262,6 @@ function buildBracketRounds(data: CompetitionData, standings: StandingRow[]) {
       "Winner of SF 2",
       getFallbackTeam(data.teams, finalMatch, "away"),
     ),
-    plannedDate: getPlannedKnockoutDate("final"),
     match: finalMatch,
   };
 
@@ -396,7 +313,8 @@ export function QualificationBracket({
             </h3>
             <div className="mt-3 grid gap-3">
               {round.matches.map((match) => {
-                const matchMeta = getMatchMeta(match);
+                const home = getFallbackTeam(data.teams, match.match, "home");
+                const away = getFallbackTeam(data.teams, match.match, "away");
 
                 return (
                   <div
@@ -407,18 +325,12 @@ export function QualificationBracket({
                       <p className="text-[0.68rem] font-black uppercase tracking-wide text-emerald-700">
                         {match.label}
                       </p>
-                      {match.match ? <StatusPill status={match.match.status} /> : null}
                     </div>
                     <div className="mt-3 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
-                      <TeamLine slot={match.home} />
+                      <TeamLine slot={home ? { label: home.name, team: home } : match.home} />
                       <span className="shrink-0 text-xs font-black text-zinc-400">VS</span>
-                      <TeamLine slot={match.away} align="right" />
+                      <TeamLine slot={away ? { label: away.name, team: away } : match.away} />
                     </div>
-                    {matchMeta ? (
-                      <p className="mt-3 border-t border-zinc-200 pt-2 text-xs font-bold leading-5 text-zinc-500">
-                        {matchMeta}
-                      </p>
-                    ) : null}
                   </div>
                 );
               })}

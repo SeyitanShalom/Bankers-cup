@@ -101,10 +101,13 @@ export function calculateMatchScoreFromEvents(
 }
 
 export function formatKickoff(kickoff: string) {
-  return new Intl.DateTimeFormat("en-NG", {
+  const formatted = new Intl.DateTimeFormat("en-NG", {
     dateStyle: "medium",
     timeStyle: "short",
+    timeZone: "Africa/Lagos",
   }).format(new Date(kickoff));
+
+  return `${formatted} WAT`;
 }
 
 export function getTeam(teams: Team[], teamId: string) {
@@ -388,6 +391,27 @@ export function getKnockoutSeedSlots(
     }
 
     return { seed, row: null, status: "pending" };
+  });
+}
+
+export function getQuarterFinalMatchesBySeed(
+  seedSlots: KnockoutSeedSlot[],
+  matches: Match[],
+): (Match | undefined)[] {
+  return QUARTER_FINAL_SEED_PAIRS.map(([homeSeed, awaySeed]) => {
+    const homeTeamId = seedSlots.find((slot) => slot.seed === homeSeed)?.row?.team.id;
+    const awayTeamId = seedSlots.find((slot) => slot.seed === awaySeed)?.row?.team.id;
+
+    if (!homeTeamId || !awayTeamId) {
+      return undefined;
+    }
+
+    return matches.find(
+      (match) =>
+        match.stage === "quarter_final" &&
+        ((match.homeTeamId === homeTeamId && match.awayTeamId === awayTeamId) ||
+          (match.homeTeamId === awayTeamId && match.awayTeamId === homeTeamId)),
+    );
   });
 }
 

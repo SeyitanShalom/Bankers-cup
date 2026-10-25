@@ -1,13 +1,11 @@
-import { QualificationBracket } from "@/components/qualification-bracket";
-import { StandingsTable } from "@/components/standings-table";
+import { LiveStandingsDashboard } from "@/components/live-standings-dashboard";
 import { getCompetitionData } from "@/lib/data";
-import { calculateStandings, QUALIFICATION_PLACES } from "@/lib/tournament";
+import { QUALIFICATION_PLACES } from "@/lib/tournament";
 
 export const dynamic = "force-dynamic";
 
 export default async function StandingsPage() {
   const data = await getCompetitionData();
-  const standings = calculateStandings(data.teams, data.matches, data.events);
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
@@ -23,10 +21,7 @@ export default async function StandingsPage() {
         </p>
       </div>
 
-      <div className="mt-8 space-y-6">
-        <StandingsTable rows={standings} />
-        <QualificationBracket data={data} standings={standings} />
-      </div>
+      <LiveStandingsDashboard initialData={data} />
     </main>
   );
 }

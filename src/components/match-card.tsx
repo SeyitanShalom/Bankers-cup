@@ -10,6 +10,7 @@ import { TeamCrest } from "./team-crest";
 type MatchCardProps = {
   match: Match;
   teams: Team[];
+  compact?: boolean;
 };
 
 const statusTone: Record<
@@ -53,7 +54,7 @@ const statusTone: Record<
   },
 };
 
-export function MatchCard({ match, teams }: MatchCardProps) {
+export function MatchCard({ match, teams, compact = false }: MatchCardProps) {
   const home = getTeam(teams, match.homeTeamId);
   const away = getTeam(teams, match.awayTeamId);
   const tone = statusTone[match.status];
@@ -62,7 +63,7 @@ export function MatchCard({ match, teams }: MatchCardProps) {
 
   return (
     <article
-      className={`animate-rise-in motion-card relative overflow-hidden rounded-lg border p-3 shadow-sm sm:p-5 ${tone.card}`}
+      className={`animate-rise-in motion-card relative overflow-hidden rounded-lg border p-3 shadow-sm ${compact ? "" : "sm:p-5"} ${tone.card}`}
     >
       <div className={`absolute inset-x-0 top-0 h-1 ${tone.rail}`} />
 
@@ -80,31 +81,41 @@ export function MatchCard({ match, teams }: MatchCardProps) {
             </p>
             <p className="mt-1 inline-flex min-w-0 items-center gap-1 text-xs font-semibold text-zinc-500 sm:gap-1.5 sm:text-sm">
               <CalendarDays className="h-3.5 w-3.5 shrink-0 text-zinc-400 sm:h-4 sm:w-4" aria-hidden="true" />
-              <span className="truncate">{formatKickoff(match.kickoff)}</span>
+              <span className={compact ? "whitespace-normal" : "truncate"}>
+                {formatKickoff(match.kickoff)}
+              </span>
             </p>
           </div>
         </div>
         <LiveMatchStatus match={match} />
       </div>
 
-      <div className="mt-4 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 border-y border-zinc-100 py-3 sm:mt-5 sm:gap-4 sm:py-4">
+      <div
+        className={`mt-4 grid items-center gap-2 border-y border-zinc-100 py-3 sm:mt-5 sm:gap-4 sm:py-4 ${
+          compact ? "grid-cols-[minmax(0,1fr)_auto]" : "grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]"
+        }`}
+      >
         <div className="flex min-w-0 items-center gap-2 sm:gap-3">
           <TeamCrest team={home} size="responsiveMd" />
           <div className="min-w-0">
             <p className="text-[10px] font-black uppercase tracking-wide text-zinc-400">Home</p>
-            <p className="min-w-0 truncate text-xs font-black text-zinc-950 sm:text-base">{home.name}</p>
+            <p className={`min-w-0 text-xs font-black text-zinc-950 sm:text-base ${compact ? "break-words" : "truncate"}`}>
+              {home.name}
+            </p>
           </div>
         </div>
-        <div className="justify-self-center">
+        <div className={compact ? "col-start-2 row-span-2 row-start-1 justify-self-center" : "justify-self-center"}>
           <LiveMatchScore match={match} />
         </div>
-        <div className="flex min-w-0 items-center justify-end gap-2 text-right sm:gap-3">
-          <div className="order-2 shrink-0">
+        <div className={`flex min-w-0 items-center gap-2 sm:gap-3 ${compact ? "col-start-1" : "justify-end text-right"}`}>
+          <div className={`shrink-0 ${compact ? "" : "order-2"}`}>
             <TeamCrest team={away} size="responsiveMd" />
           </div>
-          <div className="order-1 min-w-0">
+          <div className={`min-w-0 ${compact ? "" : "order-1"}`}>
             <p className="text-[10px] font-black uppercase tracking-wide text-zinc-400">Away</p>
-            <p className="min-w-0 truncate text-xs font-black text-zinc-950 sm:text-base">{away.name}</p>
+            <p className={`min-w-0 text-xs font-black text-zinc-950 sm:text-base ${compact ? "break-words" : "truncate"}`}>
+              {away.name}
+            </p>
           </div>
         </div>
       </div>
@@ -114,7 +125,7 @@ export function MatchCard({ match, teams }: MatchCardProps) {
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2 sm:mt-4 sm:gap-3">
         <p className="inline-flex min-w-0 items-center gap-1 text-xs font-semibold text-zinc-500 sm:gap-1.5 sm:text-sm">
           <MapPin className="h-3.5 w-3.5 shrink-0 text-zinc-400 sm:h-4 sm:w-4" aria-hidden="true" />
-          <span className="truncate">{match.venue}</span>
+          <span className={compact ? "whitespace-normal" : "truncate"}>{match.venue}</span>
         </p>
         <Link
           href={`/matches/${match.id}`}
