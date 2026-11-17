@@ -20,6 +20,12 @@ export function PlayerLeaderList({
     .filter((row) => row[valueKey] > 0)
     .sort((a, b) => {
       if (b[valueKey] !== a[valueKey]) return b[valueKey] - a[valueKey];
+      if (valueKey === "goals" && b.assists !== a.assists) {
+        return b.assists - a.assists;
+      }
+      if (valueKey === "assists" && b.goals !== a.goals) {
+        return b.goals - a.goals;
+      }
       return a.player.name.localeCompare(b.player.name);
     });
   const leaders = limit === null ? rankedRows : rankedRows.slice(0, limit);
